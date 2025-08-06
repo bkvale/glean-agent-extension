@@ -2,7 +2,7 @@
   "name": "Glean Strategic Account Plan",
   "description": "Display Glean AI Agent insights for strategic account planning directly in HubSpot",
   "version": "1.0.0",
-  "public": true,
+  "public": false,
   "scopes": [
     "crm.objects.companies.read",
     "crm.objects.companies.write"
