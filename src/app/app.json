@@ -7,14 +7,15 @@
     "crm.objects.companies.read",
     "crm.objects.companies.write"
   ],
-  "extensions": {
-    "glean-strategic-card": {
+  "extensions": [
+    {
       "type": "crm-card",
+      "id": "glean-strategic-card",
       "file": "./extensions/cards/GleanCard.jsx",
       "context": [
         "crm.record.company.view"
       ],
       "title": "Strategic Account Plan"
     }
-  }
+  ]
 } 
