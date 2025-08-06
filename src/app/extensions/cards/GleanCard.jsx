@@ -6,9 +6,9 @@ import {
   Flex,
   Box,
   LoadingSpinner,
-  Alert,
-  hubspot
+  Alert
 } from '@hubspot/ui-extensions';
+import { hubspot } from '@hubspot/ui-extensions';
 
 // Custom hook to get company data
 const useCompanyData = () => {
@@ -19,7 +19,7 @@ const useCompanyData = () => {
     // Get current company record data
     const getCompanyInfo = async () => {
       try {
-        const properties = await hubspot.crm.record.getObjectProperties();
+        const properties = await hubspot.crm.record.getProperties(['name', 'domain', 'industry', 'annualrevenue']);
         setCompanyData({
           name: properties.name || 'Unknown Company',
           domain: properties.domain || properties.website || '',
@@ -123,14 +123,14 @@ const GleanCard = () => {
           <Flex direction="column" gap="medium" align="center">
             <Text>Generate strategic insights for this account using Glean AI</Text>
             <Button 
-              type="primary" 
+              variant="primary" 
               onClick={loadGleanInsights}
               disabled={gleanLoading}
             >
               {gleanLoading ? 'Generating Insights...' : 'Generate Strategic Plan'}
             </Button>
             <Button 
-              type="secondary" 
+              variant="secondary" 
               onClick={openGleanAgent}
             >
               Open Full Glean Agent
@@ -187,7 +187,7 @@ const GleanCard = () => {
 
             <Flex gap="medium">
               <Button 
-                type="secondary" 
+                variant="secondary" 
                 onClick={() => {
                   setGleanData(null);
                   loadGleanInsights();
@@ -196,7 +196,7 @@ const GleanCard = () => {
                 Refresh Insights
               </Button>
               <Button 
-                type="primary" 
+                variant="primary" 
                 onClick={openGleanAgent}
               >
                 Open Full Glean Agent
