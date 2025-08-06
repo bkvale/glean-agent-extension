@@ -13,7 +13,8 @@
       "file": "./extensions/cards/GleanCard.jsx",
       "context": [
         "crm.record.company.view"
-      ]
+      ],
+      "title": "Strategic Account Plan"
     }
   }
 } 
