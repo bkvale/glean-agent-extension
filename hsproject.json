@@ -1,0 +1,5 @@
+{
+  "name": "glean-agent-extension",
+  "srcDir": "src",
+  "platformVersion": "4.0"
+} 

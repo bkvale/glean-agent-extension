@@ -1,0 +1,64 @@
+{
+  "strategicAccountPlan": {
+    "companyName": "Acme Corporation",
+    "domain": "acme.com",
+    "industry": "Technology",
+    "strategicScore": 85,
+    "lastUpdated": "2025-01-27T10:30:00Z",
+    "executiveSummary": "Acme Corporation represents a high-value strategic opportunity with strong growth potential in the enterprise technology sector. Recent acquisitions and digital transformation initiatives create multiple entry points for partnership.",
+    "keyOpportunities": [
+      "Expand into their emerging markets division - new offices in APAC",
+      "Leverage partnership opportunities in Q2 following their recent acquisition",
+      "Focus on digital transformation initiatives announced in latest earnings call",
+      "Cross-sell to subsidiary companies acquired in 2024",
+      "Target their new cloud migration project starting Q2 2025"
+    ],
+    "riskFactors": [
+      "Budget constraints noted in recent earnings call",
+      "Leadership changes in procurement team (new CPO as of Jan 2025)",
+      "Competitive pressure from smaller, more agile vendors",
+      "Delayed decision-making due to regulatory compliance reviews"
+    ],
+    "nextActions": [
+      "Schedule executive briefing on Q2 roadmap with new leadership team",
+      "Prepare ROI analysis for digital transformation initiatives",
+      "Connect with new procurement lead within 2 weeks",
+      "Develop proposal for APAC expansion support",
+      "Research compliance requirements for their industry vertical"
+    ],
+    "keyContacts": [
+      {
+        "name": "Sarah Johnson",
+        "title": "Chief Technology Officer",
+        "relationship": "Primary Champion",
+        "lastContact": "2025-01-20",
+        "notes": "Very interested in AI initiatives, scheduled follow-up for Feb 5"
+      },
+      {
+        "name": "Michael Chen", 
+        "title": "VP of Operations",
+        "relationship": "Decision Influencer",
+        "lastContact": "2025-01-15",
+        "notes": "Concerned about implementation timeline, needs detailed project plan"
+      }
+    ],
+    "financialProfile": {
+      "annualRevenue": "$2.4B",
+      "employeeCount": "8,500",
+      "marketCap": "$12.8B",
+      "budgetCycle": "Calendar Year",
+      "procurementProcess": "RFP Required for >$500K"
+    },
+    "competitiveIntelligence": [
+      "Currently using Competitor A for primary workflow automation",
+      "Evaluating Competitor B for cloud infrastructure",
+      "Historically price-sensitive but willing to pay premium for proven ROI"
+    ],
+    "recentNews": [
+      "Q4 2024 earnings beat expectations by 12%",
+      "Announced $500M digital transformation investment",
+      "Acquired two smaller companies in adjacent markets",
+      "New CEO appointed, previously CTO at Fortune 100 company"
+    ]
+  }
+} 

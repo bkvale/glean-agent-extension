@@ -1,0 +1,15 @@
+{
+  "name": "Glean Strategic Account Plan",
+  "description": "Display Glean AI Agent insights for strategic account planning directly in HubSpot",
+  "version": "1.0.0",
+  "extensions": [
+    {
+      "type": "crm-card",
+      "id": "glean-strategic-card",
+      "file": "./extensions/cards/GleanCard.jsx",
+      "context": [
+        "crm.record.company.view"
+      ]
+    }
+  ]
+} 
