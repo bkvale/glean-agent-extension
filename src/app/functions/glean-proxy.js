@@ -13,8 +13,8 @@ exports.main = async (event, callback) => {
     
     console.log('Making Glean API request for company:', companyName);
     
-    // Import fetch for Node.js (HubSpot serverless functions use Node.js)
-    const fetch = require('node-fetch');
+    // Use built-in fetch if available, otherwise try node-fetch
+    const fetch = globalThis.fetch || require('node-fetch');
     
     const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
       method: 'POST',

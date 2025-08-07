@@ -32,18 +32,45 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
       console.log('Calling Glean API via HubSpot serverless function for:', companyName);
       
       // Call HubSpot serverless function (bypasses CSP restrictions)
-      const { response } = await runServerlessFunction({
+      const serverlessResult = await runServerlessFunction({
         name: 'glean-proxy',
         parameters: {
           companyName: companyName
         }
       });
       
-      if (response.statusCode !== 200) {
-        throw new Error(response.body?.message || 'Serverless function error');
+      console.log('Serverless function result:', serverlessResult);
+      
+      // Handle different possible response structures
+      if (serverlessResult.error) {
+        throw new Error(serverlessResult.error.message || 'Serverless function failed');
       }
       
-      setResult(JSON.parse(response.body));
+      // Check if we have a response object
+      if (!serverlessResult.response) {
+        throw new Error('No response from serverless function');
+      }
+      
+      const { response } = serverlessResult;
+      console.log('Response object:', response);
+      
+      if (response.statusCode && response.statusCode !== 200) {
+        const errorMessage = typeof response.body === 'string' 
+          ? JSON.parse(response.body)?.message || response.body
+          : response.body?.message || 'Serverless function error';
+        throw new Error(errorMessage);
+      }
+      
+      // Parse the response body
+      let resultData;
+      if (typeof response.body === 'string') {
+        resultData = JSON.parse(response.body);
+      } else {
+        resultData = response.body || response;
+      }
+      
+      console.log('Parsed result data:', resultData);
+      setResult(resultData);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
