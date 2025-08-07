@@ -1,40 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
 const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState('');
-  const [tokenInput, setTokenInput] = useState('');
-  const [showTokenEditor, setShowTokenEditor] = useState(false);
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('gleanToken');
-      if (saved) {
-        setToken(saved);
-      }
-    } catch (_) {
-      // ignore storage errors
-    }
-  }, []);
-
-  const saveToken = () => {
-    if (!tokenInput || tokenInput.trim().length < 10) {
-      setError('Please enter a valid Glean API token.');
-      return;
-    }
-    try {
-      window.localStorage.setItem('gleanToken', tokenInput.trim());
-    } catch (_) {
-      // ignore storage errors
-    }
-    setToken(tokenInput.trim());
-    setTokenInput('');
-    setShowTokenEditor(false);
-    setError(null);
-  };
+  // Use environment variable for token (set in HubSpot Developer Portal)
+  const token = process.env.GLEAN_API_TOKEN || '';
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -99,44 +71,21 @@ const GleanCard = ({ context, actions }) => {
 
   return (
     <Box padding="medium">
-      {(!token || showTokenEditor) && (
-        <Box padding="small">
-          <Text variant="bold">Add Glean API Token</Text>
-          <Box padding="small">
-            <input
-              type="password"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              placeholder="Paste your Glean API token"
-              style={{ width: '100%', padding: '8px' }}
-            />
-            <Box padding="small">
-              <Button variant="primary" onClick={saveToken}>Save Token</Button>
-              {token && (
-                <Button variant="secondary" onClick={() => { setShowTokenEditor(false); setTokenInput(''); setError(null); }}>
-                  Cancel
-                </Button>
-              )}
-            </Box>
-          </Box>
-        </Box>
-      )}
-
-      {token && !result && !isLoading && !error && (
+      {!result && !isLoading && !error && (
         <Box padding="small">
           <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
           <Button 
             variant="primary" 
             onClick={runStrategicAccountPlan}
-            disabled={isLoading}
+            disabled={isLoading || !token}
           >
             Generate Plan
           </Button>
-          <Box padding="small">
-            <Button variant="secondary" onClick={() => setShowTokenEditor(true)}>
-              Update Token
-            </Button>
-          </Box>
+          {!token && (
+            <Box padding="small">
+              <Text variant="microcopy">⚠️ Glean API token not configured. Contact your admin to set up the GLEAN_API_TOKEN environment variable.</Text>
+            </Box>
+          )}
         </Box>
       )}
 
