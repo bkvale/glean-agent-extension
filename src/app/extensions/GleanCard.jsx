@@ -34,6 +34,7 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
       // Call HubSpot serverless function (bypasses CSP restrictions)
       const serverlessResult = await runServerlessFunction({
         name: 'glean-proxy',
+        propertiesToSend: ['name'],
         parameters: {
           companyName: companyName
         }

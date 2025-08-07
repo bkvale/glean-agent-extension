@@ -1,0 +1,10 @@
+{
+  "runtime": "nodejs18.x",
+  "version": "1.0",
+  "appFunctions": {
+    "glean-proxy": {
+      "file": "glean-proxy.js",
+      "secrets": ["GLEAN_API_TOKEN"]
+    }
+  }
+} 
