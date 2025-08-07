@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
-const GleanCard = ({ context }) => {
+const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -15,14 +15,20 @@ const GleanCard = ({ context }) => {
       // TODO: Replace with actual Bearer token
       const token = 'YOUR_GLEAN_TOKEN_HERE';
       
-      // Fetch company name from HubSpot
-      const companyProperties = await hubspot.crm.record.getObjectProperties({
-        objectType: 'companies',
-        objectId: context.crm.objectId,
-        properties: ['name']
-      });
+      // Try to get company name using actions if available
+      let companyName = 'Unknown Company';
       
-      const companyName = companyProperties.name || 'Unknown Company';
+      if (actions && actions.fetchCrmObjectProperties) {
+        try {
+          const companyProperties = await actions.fetchCrmObjectProperties(['name']);
+          companyName = companyProperties.name || `Company ID: ${context.crm?.objectId}`;
+        } catch (error) {
+          console.log('Could not fetch company name, using fallback');
+          companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
+        }
+      } else {
+        companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
+      }
       
       const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
         method: 'POST',
@@ -115,5 +121,5 @@ const GleanCard = ({ context }) => {
 };
 
 hubspot.extend(({ context, actions }) => (
-  <GleanCard context={context} />
+  <GleanCard context={context} actions={actions} />
 )); 
