@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "public": false,
   "scopes": [
-    "crm.objects.companies.read"
+    "crm.objects.companies.read",
+    "serverless-functions"
   ],
   "extensions": {
     "crm": {
@@ -13,6 +14,12 @@
           "file": "extensions/strategic-card.json"
         }
       ]
+    }
+  },
+  "functions": {
+    "glean-proxy": {
+      "file": "functions/glean-proxy.js",
+      "secrets": []
     }
   }
 } 

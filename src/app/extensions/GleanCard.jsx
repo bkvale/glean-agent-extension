@@ -14,11 +14,7 @@ const GleanCard = ({ context, actions }) => {
     setResult(null);
 
     try {
-      if (!token) {
-        throw new Error('Missing Glean API token. Add your token to run the analysis.');
-      }
-      
-      // Try to get company name using actions if available
+      // Get company name
       let companyName = 'Unknown Company';
       
       if (actions && actions.fetchCrmObjectProperties) {
@@ -33,38 +29,21 @@ const GleanCard = ({ context, actions }) => {
         companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
       }
       
-      console.log('Making Glean API request for company:', companyName);
-      console.log('Token length:', token ? token.length : 'No token');
+      console.log('Calling Glean API via HubSpot serverless function for:', companyName);
       
-      const requestBody = {
-        agent_id: '5057a8a588c649d6b1231d648a9167c8',
-        input: {
-          company_name: companyName
+      // Call HubSpot serverless function (bypasses CSP restrictions)
+      const functionResult = await actions.callServerlessFunction({
+        functionName: 'glean-proxy',
+        payload: {
+          companyName: companyName
         }
-      };
-      
-      console.log('Request body:', requestBody);
-      
-      const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
       });
       
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-
-      if (!response.ok) {
-        throw new Error(`Glean API error: ${response.status} ${response.statusText}`);
+      if (functionResult.error) {
+        throw new Error(functionResult.error.message || 'Serverless function error');
       }
-
-      const data = await response.json();
-      setResult(data);
+      
+      setResult(functionResult.response);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
@@ -93,15 +72,13 @@ const GleanCard = ({ context, actions }) => {
           <Button 
             variant="primary" 
             onClick={runStrategicAccountPlan}
-            disabled={isLoading || !token}
+            disabled={isLoading}
           >
             Generate Plan
           </Button>
-          {!token && (
-            <Box padding="small">
-              <Text variant="microcopy">⚠️ Glean API token not configured. Contact your admin to set up the GLEAN_API_TOKEN environment variable.</Text>
-            </Box>
-          )}
+          <Box padding="small">
+            <Text variant="microcopy">🔄 Real Glean Integration: Uses HubSpot serverless function to call Trace3 Glean API.</Text>
+          </Box>
         </Box>
       )}
 
