@@ -3,7 +3,7 @@
   "uid": "strategic_account_plan",
   "data": {
     "title": "Strategic Account Plan",
-    "location": "crm.record.company.view",
+    "location": "crm.record.sidebar",
     "module": {
       "file": "GleanCard.jsx"
     },
