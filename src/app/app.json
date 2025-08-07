@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "public": false,
   "scopes": [
-    "crm.objects.companies.read",
-    "serverless-functions"
+    "crm.objects.companies.read"
   ],
   "extensions": {
     "crm": {
