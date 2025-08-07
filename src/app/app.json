@@ -10,7 +10,7 @@
     "crm": {
       "cards": [
         {
-          "file": "extensions/cards/strategic-card.json"
+          "file": "extensions/strategic-card.json"
         }
       ]
     }
