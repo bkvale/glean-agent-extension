@@ -14,11 +14,5 @@
         }
       ]
     }
-  },
-  "functions": {
-    "glean-proxy": {
-      "file": "functions/glean-proxy.js",
-      "secrets": []
-    }
   }
 } 
