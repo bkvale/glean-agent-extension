@@ -33,19 +33,31 @@ const GleanCard = ({ context, actions }) => {
         companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
       }
       
+      console.log('Making Glean API request for company:', companyName);
+      console.log('Token length:', token ? token.length : 'No token');
+      
+      const requestBody = {
+        agent_id: '5057a8a588c649d6b1231d648a9167c8',
+        input: {
+          company_name: companyName
+        }
+      };
+      
+      console.log('Request body:', requestBody);
+      
       const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
         method: 'POST',
+        mode: 'cors',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          agent_id: '5057a8a588c649d6b1231d648a9167c8',
-          input: {
-            company_name: companyName
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
+      
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
 
       if (!response.ok) {
         throw new Error(`Glean API error: ${response.status} ${response.statusText}`);
@@ -55,12 +67,16 @@ const GleanCard = ({ context, actions }) => {
       setResult(data);
     } catch (err) {
       console.error('Error running Glean agent:', err);
+      console.error('Error type:', err.name);
+      console.error('Error stack:', err.stack);
       
       // Provide more specific error messages
       if (err.message.includes('Failed to fetch')) {
-        setError('Network error: Unable to connect to Glean API. Please check your internet connection and Glean token.');
+        setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
       } else if (err.message.includes('Bearer token')) {
         setError(err.message);
+      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
       } else {
         setError(`Error: ${err.message}`);
       }
