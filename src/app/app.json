@@ -7,13 +7,14 @@
     "crm.objects.companies.read"
   ],
   "extensions": {
-    "glean-strategic-card": {
+    "strategic-card": {
       "type": "crm-card",
       "file": "./extensions/cards/GleanCard.jsx",
       "context": [
         "crm.record.company.view"
       ],
-      "title": "Strategic Account Plan"
+      "title": "Strategic Account Plan",
+      "description": "Display strategic account insights"
     }
   }
 } 
