@@ -5,8 +5,8 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  // Use environment variable for token (set in HubSpot Developer Portal)
-  const token = process.env.GLEAN_API_TOKEN || '';
+  // Glean API token (can be moved to environment variables later)
+  const token = 'LOlifCRAD8smihnO8ETHiku7Rmy5zDO5hEgTruy6luQ=';
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
