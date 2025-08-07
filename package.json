@@ -10,11 +10,17 @@
     "lint": "eslint src/",
     "format": "prettier --write src/"
   },
-  "keywords": ["hubspot", "ui-extension", "glean", "ai", "crm"],
+  "keywords": [
+    "hubspot",
+    "ui-extension",
+    "glean",
+    "ai",
+    "crm"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@hubspot/ui-extensions": "^2025.1.0",
+    "@hubspot/ui-extensions": "^0.9.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
