@@ -1,0 +1,12 @@
+{
+  "type": "crm-card",
+  "uid": "strategic_account_plan",
+  "data": {
+    "title": "Strategic Account Plan",
+    "location": "crm.record.company.view",
+    "module": {
+      "file": "GleanCard.jsx"
+    },
+    "objectTypes": [{ "name": "companies" }]
+  }
+} 

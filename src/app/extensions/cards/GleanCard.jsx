@@ -1,13 +1,15 @@
 import React from 'react';
-import { Text, Box } from '@hubspot/ui-extensions';
+import { hubspot, Text, Box } from '@hubspot/ui-extensions';
 
-const GleanCard = () => {
+hubspot.extend<'crm.record.company.view'>(({ context, actions }) => (
+  <GleanCard context={context} />
+));
+
+const GleanCard = ({ context }) => {
   return (
     <Box padding="medium">
       <Text>Strategic Account Plan</Text>
       <Text>Hello from Glean Test Card!</Text>
     </Box>
   );
-};
-
-export default GleanCard; 
+}; 
