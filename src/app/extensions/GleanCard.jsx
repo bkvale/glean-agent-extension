@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { hubspot, Text, Box, Button, Spinner } from '@hubspot/ui-extensions';
+import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
 const GleanCard = ({ context }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,6 +15,15 @@ const GleanCard = ({ context }) => {
       // TODO: Replace with actual Bearer token
       const token = 'YOUR_GLEAN_TOKEN_HERE';
       
+      // Fetch company name from HubSpot
+      const companyProperties = await hubspot.crm.record.getObjectProperties({
+        objectType: 'companies',
+        objectId: context.crm.objectId,
+        properties: ['name']
+      });
+      
+      const companyName = companyProperties.name || 'Unknown Company';
+      
       const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
         method: 'POST',
         headers: {
@@ -24,9 +33,7 @@ const GleanCard = ({ context }) => {
         body: JSON.stringify({
           agent_id: '5057a8a588c649d6b1231d648a9167c8',
           input: {
-            company_name: context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company',
-            user_email: context.user?.email || 'Unknown User',
-            portal_id: context.portal?.id || 'Unknown Portal'
+            company_name: companyName
           }
         })
       });
@@ -64,8 +71,7 @@ const GleanCard = ({ context }) => {
 
       {isLoading && (
         <Box padding="small">
-          <Spinner />
-          <Text>Running Strategic Account Plan...</Text>
+          <Text>⏳ Running Strategic Account Plan...</Text>
         </Box>
       )}
 
