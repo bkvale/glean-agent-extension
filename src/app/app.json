@@ -6,9 +6,8 @@
   "scopes": [
     "crm.objects.companies.read"
   ],
-  "extensions": [
-    {
-      "id": "glean-strategic-card",
+  "extensions": {
+    "glean-strategic-card": {
       "type": "crm-card",
       "file": "extensions/cards/GleanCard.jsx",
       "context": [
@@ -16,5 +15,5 @@
       ],
       "title": "Strategic Account Plan"
     }
-  ]
+  }
 } 
