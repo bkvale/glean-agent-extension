@@ -1,10 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
 const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState('');
+  const [tokenInput, setTokenInput] = useState('');
+  const [showTokenEditor, setShowTokenEditor] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('gleanToken');
+      if (saved) {
+        setToken(saved);
+      }
+    } catch (_) {
+      // ignore storage errors
+    }
+  }, []);
+
+  const saveToken = () => {
+    if (!tokenInput || tokenInput.trim().length < 10) {
+      setError('Please enter a valid Glean API token.');
+      return;
+    }
+    try {
+      window.localStorage.setItem('gleanToken', tokenInput.trim());
+    } catch (_) {
+      // ignore storage errors
+    }
+    setToken(tokenInput.trim());
+    setTokenInput('');
+    setShowTokenEditor(false);
+    setError(null);
+  };
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -12,11 +42,8 @@ const GleanCard = ({ context, actions }) => {
     setResult(null);
 
     try {
-      // TODO: Replace with actual Bearer token
-      const token = 'YOUR_GLEAN_TOKEN_HERE';
-      
-      if (token === 'YOUR_GLEAN_TOKEN_HERE') {
-        throw new Error('Please add your Glean Bearer token to the code. Replace "YOUR_GLEAN_TOKEN_HERE" with your actual token.');
+      if (!token) {
+        throw new Error('Missing Glean API token. Add your token to run the analysis.');
       }
       
       // Try to get company name using actions if available
@@ -72,8 +99,30 @@ const GleanCard = ({ context, actions }) => {
 
   return (
     <Box padding="medium">
-      
-      {!result && !isLoading && !error && (
+      {(!token || showTokenEditor) && (
+        <Box padding="small">
+          <Text variant="bold">Add Glean API Token</Text>
+          <Box padding="small">
+            <input
+              type="password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="Paste your Glean API token"
+              style={{ width: '100%', padding: '8px' }}
+            />
+            <Box padding="small">
+              <Button variant="primary" onClick={saveToken}>Save Token</Button>
+              {token && (
+                <Button variant="secondary" onClick={() => { setShowTokenEditor(false); setTokenInput(''); setError(null); }}>
+                  Cancel
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      )}
+
+      {token && !result && !isLoading && !error && (
         <Box padding="small">
           <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
           <Button 
@@ -83,6 +132,11 @@ const GleanCard = ({ context, actions }) => {
           >
             Generate Plan
           </Button>
+          <Box padding="small">
+            <Button variant="secondary" onClick={() => setShowTokenEditor(true)}>
+              Update Token
+            </Button>
+          </Box>
         </Box>
       )}
 
