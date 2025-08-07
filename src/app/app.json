@@ -6,14 +6,15 @@
   "scopes": [
     "crm.objects.companies.read"
   ],
-  "extensions": {
-    "test-card": {
+  "extensions": [
+    {
+      "id": "glean-strategic-card",
       "type": "crm-card",
-      "file": "./extensions/cards/GleanCard.jsx",
+      "file": "extensions/cards/GleanCard.jsx",
       "context": [
         "crm.record.company.view"
       ],
-      "title": "Test Card"
+      "title": "Strategic Account Plan"
     }
-  }
+  ]
 } 
