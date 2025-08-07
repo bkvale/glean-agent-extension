@@ -8,6 +8,10 @@ yarn-error.log*
 hubspot.config.yml
 archived.hubspot.config.yml
 
+# Environment files with secrets
+.env
+app.functions/.env
+
 # System files
 .DS_Store
 .DS_Store?

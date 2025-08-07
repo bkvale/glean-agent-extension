@@ -41,36 +41,35 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
       
       console.log('Serverless function result:', serverlessResult);
       
-      // Handle different possible response structures
-      if (serverlessResult.error) {
-        throw new Error(serverlessResult.error.message || 'Serverless function failed');
+      // Handle error responses
+      if (serverlessResult.status === 'ERROR') {
+        throw new Error(serverlessResult.message || 'Serverless function failed');
       }
       
-      // Check if we have a response object
-      if (!serverlessResult.response) {
-        throw new Error('No response from serverless function');
-      }
-      
-      const { response } = serverlessResult;
-      console.log('Response object:', response);
-      
-      if (response.statusCode && response.statusCode !== 200) {
-        const errorMessage = typeof response.body === 'string' 
-          ? JSON.parse(response.body)?.message || response.body
-          : response.body?.message || 'Serverless function error';
-        throw new Error(errorMessage);
-      }
-      
-      // Parse the response body
-      let resultData;
-      if (typeof response.body === 'string') {
-        resultData = JSON.parse(response.body);
+      // The new format should return the response directly
+      if (serverlessResult.response) {
+        const response = serverlessResult.response;
+        console.log('Response object:', response);
+        
+        if (response.statusCode && response.statusCode !== 200) {
+          const errorData = typeof response.body === 'string' 
+            ? JSON.parse(response.body)
+            : response.body;
+          throw new Error(errorData?.error || errorData?.message || 'Serverless function error');
+        }
+        
+        // Parse the successful response
+        const resultData = typeof response.body === 'string' 
+          ? JSON.parse(response.body)
+          : response.body;
+        
+        console.log('Parsed result data:', resultData);
+        setResult(resultData);
       } else {
-        resultData = response.body || response;
+        // Direct response format
+        console.log('Direct response format:', serverlessResult);
+        setResult(serverlessResult);
       }
-      
-      console.log('Parsed result data:', resultData);
-      setResult(resultData);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);

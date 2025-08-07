@@ -1,0 +1,9 @@
+{
+  "name": "glean-agent-serverless-functions",
+  "version": "1.0.0",
+  "description": "Serverless functions for Glean Agent integration",
+  "private": true,
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+} 

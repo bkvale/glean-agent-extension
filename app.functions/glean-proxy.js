@@ -1,25 +1,42 @@
 // HubSpot Serverless Function to proxy Glean API requests
 // This bypasses Content Security Policy restrictions in UI Extensions
 
-exports.main = async (event, callback) => {
-  console.log('Glean proxy function called with event:', JSON.stringify(event));
+const fetch = require('node-fetch');
+
+exports.main = async (context, sendResponse) => {
+  console.log('Glean proxy function called with context:', JSON.stringify(context, null, 2));
   
   try {
-    const { companyName } = event.inputFields || event.body || {};
+    const { companyName } = context.body || context.parameters || {};
     
     if (!companyName) {
-      throw new Error('Company name is required');
+      return sendResponse({
+        statusCode: 400,
+        body: JSON.stringify({
+          error: 'Company name is required',
+          received: context
+        })
+      });
     }
     
     console.log('Making Glean API request for company:', companyName);
     
-    // Use built-in fetch if available, otherwise try node-fetch
-    const fetch = globalThis.fetch || require('node-fetch');
+    // Get the private app access token from environment variables
+    const gleanToken = process.env.GLEAN_API_TOKEN;
+    
+    if (!gleanToken) {
+      return sendResponse({
+        statusCode: 500,
+        body: JSON.stringify({
+          error: 'Glean API token not configured in environment variables'
+        })
+      });
+    }
     
     const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer LOlifCRAD8smihnO8ETHiku7Rmy5zDO5hEgTruy6luQ=',
+        'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -35,13 +52,19 @@ exports.main = async (event, callback) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Glean API error response:', errorText);
-      throw new Error(`Glean API error: ${response.status} ${response.statusText} - ${errorText}`);
+      return sendResponse({
+        statusCode: response.status,
+        body: JSON.stringify({
+          error: `Glean API error: ${response.status} ${response.statusText}`,
+          details: errorText
+        })
+      });
     }
 
     const data = await response.json();
     console.log('Glean API success, returning data');
     
-    callback({
+    sendResponse({
       statusCode: 200,
       body: JSON.stringify(data)
     });
@@ -49,7 +72,7 @@ exports.main = async (event, callback) => {
   } catch (error) {
     console.error('Glean proxy function error:', error);
     
-    callback({
+    sendResponse({
       statusCode: 500,
       body: JSON.stringify({
         error: 'Failed to generate strategic account plan',
