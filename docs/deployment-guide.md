@@ -1,323 +1,155 @@
 # Deployment Guide: Glean-HubSpot UI Extension
 
-This guide provides multiple deployment approaches for the Glean-HubSpot UI Extension, prioritized by ease of implementation and reliability.
+This guide covers the deployment process for the Glean-HubSpot UI Extension using the current working approach.
 
-## 🎯 Deployment Options Overview
+## ✅ Current Working Deployment Method
 
-| Method | Complexity | Reliability | Features | Use Case |
-|--------|------------|-------------|----------|----------|
-| **Manual Projects Builder** | Low | High | Basic iframe | Quick MVP |
-| **CLI Upload** | Medium | Currently Blocked | Full features | When CLI works |
-| **Component Copy-Paste** | Medium | High | Full features | Manual setup |
-| **Template Repository** | Low | High | Basic setup | Team replication |
+**GitHub Integration** - Auto-deploy on push to main branch
 
-## Option 1: Manual Projects Builder (Recommended for MVP)
+### Prerequisites
+- GitHub repository connected to HubSpot
+- HubSpot Standard Sandbox account (ID: 47610017)
+- Glean Bearer token (for API integration)
 
-### Simple iframe Approach
+### Deployment Process
 
-**Time to deploy**: 15 minutes  
-**Complexity**: Beginner  
-**Maintenance**: Low
-
-#### Steps:
-
-1. **Access HubSpot Developer Portal**
-   - Log into your HubSpot account
-   - Go to Developer Portal → Projects (UI Extensions) Builder
-
-2. **Create New Project**
-   - Click "Create Project"
-   - Name: "Glean Strategic Insights"
-   - Description: "AI-powered strategic account planning"
-
-3. **Add Custom Card**
-   - Click "Add Component" → "Custom Card"
-   - Title: "Strategic Account Plan"
-   - Placement: Company record sidebar
-
-4. **Configure iframe**
-   - Card Type: iframe
-   - URL: `https://app.glean.com/chat/agents/5057a8a588c649d6b1231d648a9167c8?`
-   - Width: 100%
-   - Height: 600px
-
-5. **Add Dynamic Context** (if supported)
-   ```
-   https://app.glean.com/chat/agents/5057a8a588c649d6b1231d648a9167c8?company={{company.name}}&domain={{company.domain}}&industry={{company.industry}}
-   ```
-
-6. **Save and Test**
-   - Save the project
-   - Navigate to a Company record
-   - Verify the card appears and loads Glean
-
-#### Pros:
-- ✅ Quick to implement
-- ✅ No CLI dependencies
-- ✅ Reliable deployment
-- ✅ Can pass company context
-
-#### Cons:
-- ❌ Limited customization
-- ❌ Basic UI integration
-- ❌ No mock data for development
-
----
-
-## Option 2: Manual Component Creation
-
-**Time to deploy**: 45 minutes  
-**Complexity**: Intermediate  
-**Maintenance**: Medium
-
-### Steps:
-
-1. **Create Project Structure in Projects Builder**
-   - Follow Option 1 steps 1-3
-   - Choose "React Component" instead of iframe
-
-2. **Copy Component Code**
-   - Open `src/app/extensions/cards/GleanCard.jsx`
-   - Copy the entire component code
-   - Paste into Projects Builder code editor
-
-3. **Configure Dependencies**
-   - Ensure these imports are available:
-     ```jsx
-     import React, { useState, useEffect } from 'react';
-     import {
-       Divider, Text, Button, Flex, Box, 
-       LoadingSpinner, Alert, hubspot
-     } from '@hubspot/ui-extensions';
-     ```
-
-4. **Test Mock Data**
-   - Save and preview in HubSpot
-   - Test "Generate Strategic Plan" button
-   - Verify company data loading
-
-5. **Configure Real Glean Integration** (optional)
-   - Replace mock data with actual Glean API calls
-   - Add authentication handling
-
-#### Pros:
-- ✅ Full feature set
-- ✅ Custom UI components
-- ✅ Mock data for testing
-- ✅ Company context integration
-
-#### Cons:
-- ❌ More complex setup
-- ❌ Requires code understanding
-- ❌ Manual maintenance
-
----
-
-## Option 3: CLI Upload (When Available)
-
-**Time to deploy**: 30 minutes  
-**Complexity**: Intermediate  
-**Maintenance**: Low
-
-### Prerequisites:
-- CLI 405 error resolved by HubSpot
-- Project structure complete
-- Dependencies installed
-
-### Steps:
-
-1. **Verify CLI Setup**
+1. **Automatic Deployment**
    ```bash
-   hs --version  # Should be 7.5.4+
-   hs accounts list  # Verify authentication
+   git push origin main  # Triggers auto-build and deployment
+   ```
+
+2. **Monitor Build Status**
+   - Check HubSpot Developer Portal → Projects
+   - Verify build succeeds (usually takes 1-3 minutes)
+   - Extension automatically appears in Extensions section
+
+3. **Configure Extension**
+   - Go to HubSpot CRM → Company records
+   - Click "Customize" in sidebar
+   - Add "Strategic Account Plan" card
+   - Save configuration
+
+### Build Status
+- **Recent builds**: All successful (#20+)
+- **Extension**: Successfully registered and functional
+- **Platform**: HubSpot 2023.2
+
+## 🔧 Configuration
+
+### Glean API Integration
+
+To enable full functionality:
+
+1. **Get Glean Bearer Token**
+   - Contact your Glean admin
+   - Request API access token
+
+2. **Update Code**
+   - Edit `src/app/extensions/GleanCard.jsx`
+   - Replace `'YOUR_GLEAN_TOKEN_HERE'` with actual token
+
+3. **Deploy Changes**
+   ```bash
+   git add .
+   git commit -m "Add Glean API token"
+   git push origin main
+   ```
+
+### HubSpot Configuration
+
+The project is pre-configured for:
+- **Account**: Standard Sandbox (47610017)
+- **Platform Version**: 2023.2
+- **Extension Type**: Private app (CRM card)
+
+## 📊 Project Structure
+
+```
+src/app/
+├── app.json                    # Extension configuration
+└── extensions/
+    ├── package.json           # Dependencies
+    ├── strategic-card.json    # Card definition
+    └── GleanCard.jsx         # React component
+```
+
+## 🚀 Quick Deployment
+
+### For New Users
+
+1. **Clone Repository**
+   ```bash
+   git clone https://github.com/bkvale/glean-agent-extension.git
+   cd glean-agent-extension
    ```
 
 2. **Install Dependencies**
    ```bash
    npm install
+   cd src/app/extensions && npm install
    ```
 
-3. **Upload Project**
+3. **Connect to HubSpot**
+   - Fork repository to your GitHub account
+   - Connect GitHub to HubSpot Developer Portal
+   - Set up Personal Access Key
+
+4. **Deploy**
    ```bash
-   hs project upload
+   git push origin main
    ```
 
-4. **Start Development** (optional)
+### For Updates
+
+1. **Make Changes**
+   - Edit files as needed
+   - Test locally if desired
+
+2. **Deploy**
    ```bash
-   hs project dev
+   git add .
+   git commit -m "Description of changes"
+   git push origin main
    ```
 
-#### Current Status:
-🚫 **BLOCKED** - 405 Method Not Allowed error on project upload
+## 🔍 Troubleshooting
 
-#### Resolution Required:
-- Contact HubSpot support
-- Verify account has UI Extensions beta enabled
-- Try from different network/machine
+### Common Issues
+
+1. **Build Fails**
+   - Check GitHub repository connection
+   - Verify Personal Access Key is valid
+   - Review build logs in HubSpot Developer Portal
+
+2. **Extension Not Appearing**
+   - Ensure using Standard Sandbox account
+   - Check Extensions section in HubSpot
+   - Verify card is added to Company record sidebar
+
+3. **Glean API Errors**
+   - Verify Bearer token is correct
+   - Check network connectivity
+   - Review error messages in browser console
+
+### Support Resources
+
+- **HubSpot Documentation**: [UI Extensions Guide](https://developers.hubspot.com/docs/platform/ui-extensions)
+- **GitHub Issues**: Create issues for code problems
+- **HubSpot Support**: Contact for platform issues
+
+## 📈 Future Enhancements
+
+### Planned Features
+- **Multiple Agents**: Support for different Glean agents
+- **Agent Selection**: Dropdown for agent selection
+- **Enhanced UI**: Better result formatting
+- **Caching**: Store results to reduce API calls
+
+### Deployment Improvements
+- **CI/CD Pipeline**: Automated testing
+- **Environment Management**: Dev/staging/production
+- **Monitoring**: Build and deployment alerts
 
 ---
 
-## Option 4: Template Repository Approach
-
-**Time to deploy**: 20 minutes  
-**Complexity**: Beginner  
-**Maintenance**: Low
-
-### For Team Replication:
-
-1. **Create GitHub Template**
-   - Fork this repository
-   - Create template repository
-   - Add team members as collaborators
-
-2. **Documentation Package**
-   - Include this deployment guide
-   - Add team-specific configuration
-   - Create step-by-step screenshots
-
-3. **Standardized Setup**
-   ```bash
-   # Team member setup
-   git clone <template-repo>
-   cd glean-agent-extension
-   # Follow Option 1 or 2 above
-   ```
-
----
-
-## 🔧 Configuration Details
-
-### HubSpot Projects Builder Settings
-
-```json
-{
-  "projectName": "Glean Strategic Insights",
-  "description": "AI-powered strategic account planning",
-  "components": [
-    {
-      "type": "crm-card",
-      "name": "Strategic Account Plan",
-      "placement": ["crm.record.company.view"],
-      "size": "medium"
-    }
-  ]
-}
-```
-
-### iframe Configuration
-
-**Basic URL**:
-```
-https://app.glean.com/chat/agents/5057a8a588c649d6b1231d648a9167c8?
-```
-
-**With Dynamic Data** (if HubSpot supports tokens):
-```
-https://app.glean.com/chat/agents/5057a8a588c649d6b1231d648a9167c8?company={{company.name}}&domain={{company.domain}}&industry={{company.industry}}&revenue={{company.annualrevenue}}
-```
-
-### Component Properties
-
-```jsx
-// Available HubSpot company properties
-const companyProperties = [
-  'name',           // Company name
-  'domain',         // Website domain
-  'industry',       // Industry category
-  'annualrevenue',  // Annual revenue
-  'numberofemployees', // Employee count
-  'city',           // Location
-  'state',          // State/region
-  'country'         // Country
-];
-```
-
-## 🧪 Testing Checklist
-
-### Pre-Deployment Testing
-
-- [ ] Projects Builder accessible
-- [ ] Can create new projects
-- [ ] iframe loads Glean agent correctly
-- [ ] Company data accessible in HubSpot
-- [ ] No console errors in browser
-
-### Post-Deployment Testing
-
-- [ ] Card appears on Company records
-- [ ] Glean agent loads properly
-- [ ] Company context passed correctly
-- [ ] "Open Full Glean Agent" button works
-- [ ] Mock insights display correctly (for full component)
-- [ ] No performance issues
-
-### User Acceptance Testing
-
-- [ ] Sales team can access insights
-- [ ] Workflow doesn't disrupt existing processes
-- [ ] Insights are relevant and useful
-- [ ] No training required for basic usage
-
-## 🚨 Troubleshooting Common Issues
-
-### iframe Not Loading
-```javascript
-// Check if URL is accessible
-console.log('Testing Glean URL:', 'https://app.glean.com/chat/agents/5057a8a588c649d6b1231d648a9167c8?');
-
-// Verify in browser first
-// Then test in HubSpot iframe
-```
-
-### Company Data Not Available
-```jsx
-// Debug company properties
-useEffect(() => {
-  hubspot.crm.record.getObjectProperties()
-    .then(props => console.log('Available properties:', props))
-    .catch(err => console.error('Property access error:', err));
-}, []);
-```
-
-### Authentication Issues
-```bash
-# Re-authenticate HubSpot CLI
-hs auth
-
-# Verify account access
-hs accounts list
-
-# Check developer portal permissions
-```
-
-## 📋 Deployment Recommendations
-
-### For Immediate MVP (Choose Option 1)
-- Use simple iframe approach
-- Deploy in 15 minutes
-- Test with real users
-- Gather feedback
-
-### For Full Features (Choose Option 2)
-- Manual component creation
-- Include mock data and full UI
-- Better user experience
-- More development time required
-
-### For Production (Wait for Option 3)
-- Resolve CLI upload issues first
-- Use proper development workflow
-- Version control and deployment pipeline
-- Automated testing and updates
-
----
-
-## 📞 Next Steps
-
-1. **Choose deployment option** based on timeline and requirements
-2. **Follow step-by-step guide** for chosen option
-3. **Test thoroughly** before rolling out to team
-4. **Document any customizations** for future maintenance
-5. **Plan for CLI migration** when 405 errors are resolved
-
-**Recommended Priority**: Start with Option 1 (iframe) for immediate value, then migrate to Option 2 or 3 as time and requirements allow. 
+**Last Updated**: Build #20+ - Working deployment via GitHub integration 

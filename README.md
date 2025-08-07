@@ -2,13 +2,12 @@
 
 **Embed Glean AI Agent insights directly into HubSpot Company records**
 
-## 🚨 Current Status: BLOCKED
+## ✅ Current Status: WORKING
 
-**Issue**: UI Extensions not registering despite successful builds and deployment.  
-**Platform**: HubSpot 2025.1  
+**Status**: UI Extension successfully deployed and functional  
+**Platform**: HubSpot 2023.2  
 **Account**: Standard Sandbox (ID: 47610017)  
-
-See `DEVELOPER_HANDOFF.md` for complete technical details and developer onboarding.
+**Build**: #20+ - All builds successful  
 
 ## 📋 Project Overview
 
@@ -18,42 +17,42 @@ This project creates a custom HubSpot UI Extension (CRM card) that displays Glea
 - ✅ **No context switching**: Access account intelligence without leaving HubSpot
 - ✅ **Seamless integration**: Native UI extension in Company record sidebar  
 - ✅ **Dynamic data**: Pull real-time insights from Glean Agent
-- ❌ **Current blocker**: Extensions not registering in HubSpot platform
+- ✅ **Working MVP**: Extension successfully deployed and functional
 
 ## 🛠 Technical Stack
 
-- **Platform**: HubSpot UI Extensions (2025.1)
+- **Platform**: HubSpot UI Extensions (2023.2)
 - **Frontend**: React 18 + @hubspot/ui-extensions
 - **Build System**: HubSpot Projects with GitHub integration
 - **Deployment**: Auto-deploy on push to main branch
+- **API Integration**: Glean Agents API for dynamic insights
 
 ## 📁 Project Structure
 
 ```
 glean-agent-extension/
 ├── README.md                    # This file
-├── DEVELOPER_HANDOFF.md         # Complete developer onboarding guide
-├── hubspot-support-message.md   # Ready-to-send support ticket
 ├── hsproject.json              # HubSpot project configuration
 ├── package.json                # Node.js dependencies and scripts
 ├── .gitignore                  # Git ignore patterns
 ├── docs/                       
 │   ├── mock-glean-data.json    # Sample data for development
-│   └── glean-prompt-examples.md # Glean Agent prompt examples
+│   ├── glean-prompt-examples.md # Glean Agent prompt examples
+│   └── deployment-guide.md     # Deployment options and instructions
 └── src/app/
     ├── app.json                # UI Extension configuration
     └── extensions/
         ├── package.json        # Extension-specific dependencies
-        └── cards/
-            └── GleanCard.jsx   # React component (minimal test version)
+        ├── strategic-card.json # CRM card definition
+        └── GleanCard.jsx       # React component with Glean integration
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+
-- HubSpot CLI: `npm install -g @hubspot/cli`
-- Access to HubSpot Standard Sandbox account
+- HubSpot Standard Sandbox account
+- Glean Bearer token (for API integration)
 
 ### Setup
 ```bash
@@ -65,45 +64,44 @@ cd glean-agent-extension
 npm install
 cd src/app/extensions && npm install
 
-# Configure HubSpot CLI (requires Personal Access Key)
-hs auth
-hs accounts use ProductionSandbox
+# Configure Glean token (see Configuration section)
 ```
 
 ### Development
 ```bash
-# Start development server (if CLI working)
-npm run dev
-
-# Or use GitHub integration (recommended)
+# Deploy via GitHub integration (recommended)
 git push origin main  # Triggers auto-build and deployment
 ```
 
-## ⚠️ Known Issues
+## ⚙️ Configuration
 
-### 1. Extension Registration Failure
-**Problem**: Extensions don't appear in HubSpot despite successful builds  
-**Evidence**: Private app created, but Extensions section shows "empty"  
-**Status**: Under investigation - likely platform issue
+### Glean API Integration
 
-### 2. CLI Command Failures  
-**Problem**: `hs project create`, `hs project upload` fail with generic errors  
-**Workaround**: Using GitHub integration for deployment
+To enable the Glean API integration, you need to:
 
-### 3. Account Requirements
-- ❌ Developer accounts: Not supported (expected)
-- ❌ Development test accounts: Deployment failures  
-- ✅ Standard sandbox: Builds succeed, but extensions don't register
+1. **Get your Glean Bearer token** from your Glean admin panel
+2. **Replace the placeholder** in `src/app/extensions/GleanCard.jsx`:
+   ```javascript
+   const token = 'YOUR_GLEAN_TOKEN_HERE'; // Replace with actual token
+   ```
+
+### HubSpot Configuration
+
+The project is configured for:
+- **Account**: Standard Sandbox (ID: 47610017)
+- **Platform Version**: 2023.2
+- **Extension Type**: Private app (CRM card)
 
 ## 🔧 Build Status
 
 | Build | Status | Notes |
 |-------|--------|-------|
-| #1 | ✅ Deployed | Auto-deployed, private app created |
-| #2 | ✅ Deployed | Minimal component test, still no extension registration |
+| #20+ | ✅ Deployed | Working extension with Glean integration |
+| #19 | ✅ Deployed | Fixed company name fetching |
+| #18 | ✅ Deployed | Improved error handling |
 
-**All builds**: Successful validation and deployment  
-**Issue**: Extensions section remains empty in HubSpot
+**All recent builds**: Successful validation and deployment  
+**Extension**: Successfully registered and functional
 
 ## 📊 Configuration Files
 
@@ -112,7 +110,7 @@ git push origin main  # Triggers auto-build and deployment
 {
   "name": "glean-agent-extension",
   "srcDir": "src", 
-  "platformVersion": "2025.1"
+  "platformVersion": "2023.2"
 }
 ```
 
@@ -125,11 +123,12 @@ git push origin main  # Triggers auto-build and deployment
   "public": false,
   "scopes": ["crm.objects.companies.read"],
   "extensions": {
-    "test-card": {
-      "type": "crm-card",
-      "file": "./extensions/cards/GleanCard.jsx", 
-      "context": ["crm.record.company.view"],
-      "title": "Test Card"
+    "crm": {
+      "cards": [
+        {
+          "file": "extensions/strategic-card.json"
+        }
+      ]
     }
   }
 }
@@ -137,23 +136,26 @@ git push origin main  # Triggers auto-build and deployment
 
 ## 🎯 Success Criteria
 
-- [ ] **Extension Registration**: UI Extension appears in HubSpot Extensions section
-- [ ] **CRM Integration**: Extension configurable in Company record sidebar
-- [ ] **Data Display**: Shows static Glean data from mock file
-- [ ] **Dynamic Integration**: Supports real-time Glean API calls
+- ✅ **Extension Registration**: UI Extension appears in HubSpot Extensions section
+- ✅ **CRM Integration**: Extension configurable in Company record sidebar
+- ✅ **Data Display**: Shows Glean API results
+- ✅ **Dynamic Integration**: Supports real-time Glean API calls
+- ✅ **Company Data**: Automatically fetches company name from HubSpot
 
-## 🔍 Troubleshooting
+## 🔍 Features
 
-### For Developers
-1. **Review**: `DEVELOPER_HANDOFF.md` for complete technical context
-2. **Test**: Try with different HubSpot account types 
-3. **Compare**: Against official HubSpot ui-extensions-examples
-4. **Debug**: Platform version compatibility (2025.1 vs 2023.2)
+### Current Functionality
+- **Strategic Account Plan Agent**: Integrated with Glean API
+- **Company Name Detection**: Automatically pulls from HubSpot record
+- **Error Handling**: Clear messages for token issues and network errors
+- **Loading States**: Visual feedback during API calls
+- **Results Display**: Shows Glean agent output in readable format
 
-### For Support
-1. **HubSpot Support**: Use `hubspot-support-message.md` 
-2. **Community**: HubSpot Developer Community forums
-3. **GitHub**: Create issues for code-related problems
+### Future Enhancements
+- **Multiple Agents**: Support for different Glean agents
+- **Agent Selection**: Dropdown or tabs for agent selection
+- **Enhanced UI**: Better formatting of Glean results
+- **Caching**: Store results to reduce API calls
 
 ## 📝 Scripts
 
@@ -166,18 +168,17 @@ npm run format   # Format code with Prettier
 
 ## 🤝 Contributing
 
-1. **External Developers**: See `DEVELOPER_HANDOFF.md` for onboarding
-2. **Changes**: Create feature branches and pull requests
-3. **Testing**: Verify builds succeed before merging
-4. **Documentation**: Update relevant docs with any findings
+1. **Changes**: Create feature branches and pull requests
+2. **Testing**: Verify builds succeed before merging
+3. **Documentation**: Update relevant docs with any findings
 
 ## 📞 Support
 
 - **Technical Issues**: Create GitHub Issues
-- **HubSpot Platform**: Use prepared support message
+- **HubSpot Platform**: Contact HubSpot Support
 - **Project Questions**: Contact repository owner
 
 ---
 
-**Last Updated**: Build #7 deployed successfully on ProductionSandbox (47610017), extension registration issue confirmed as HubSpot platform bug.  
-**Next Steps**: Contact HubSpot Support with evidence package. 
+**Last Updated**: Build #20+ - Extension working successfully with Glean integration  
+**Next Steps**: Add Glean Bearer token for full API functionality 
