@@ -16,6 +16,13 @@ UI Extensions are not registering in the Extensions section of Private Apps, des
 3. ✅ **Private app gets created automatically** (visible in Private Apps section)
 4. ❌ **Extensions section shows "This private app doesn't have any extensions"**
 
+**Critical Finding**: This issue occurs across multiple account types:
+- ✅ Standard Sandbox (47610017): Builds succeed, extensions don't register
+- ✅ Production Account: Builds succeed, extensions don't register  
+- ❌ Developer Account (242835255): Build fails (expected behavior)
+
+This confirms the issue is a platform bug, not an account provisioning problem.
+
 ## **Technical Configuration**
 
 ### **Project Structure**

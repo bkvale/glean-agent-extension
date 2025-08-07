@@ -9,7 +9,7 @@
   "extensions": {
     "glean-strategic-card": {
       "type": "crm-card",
-      "file": "extensions/cards/GleanCard.jsx",
+      "file": "./extensions/cards/GleanCard.jsx",
       "context": [
         "crm.record.company.view"
       ],
