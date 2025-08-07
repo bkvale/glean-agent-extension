@@ -15,6 +15,10 @@ const GleanCard = ({ context, actions }) => {
       // TODO: Replace with actual Bearer token
       const token = 'YOUR_GLEAN_TOKEN_HERE';
       
+      if (token === 'YOUR_GLEAN_TOKEN_HERE') {
+        throw new Error('Please add your Glean Bearer token to the code. Replace "YOUR_GLEAN_TOKEN_HERE" with your actual token.');
+      }
+      
       // Try to get company name using actions if available
       let companyName = 'Unknown Company';
       
@@ -52,7 +56,15 @@ const GleanCard = ({ context, actions }) => {
       setResult(data);
     } catch (err) {
       console.error('Error running Glean agent:', err);
-      setError(err.message);
+      
+      // Provide more specific error messages
+      if (err.message.includes('Failed to fetch')) {
+        setError('Network error: Unable to connect to Glean API. Please check your internet connection and Glean token.');
+      } else if (err.message.includes('Bearer token')) {
+        setError(err.message);
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
