@@ -5,7 +5,7 @@
 ## ✅ Current Status: WORKING
 
 **Status**: UI Extension successfully deployed and functional  
-**Platform**: HubSpot 2023.2  
+**Platform**: HubSpot 2025.1  
 **Account**: Standard Sandbox (ID: 47610017)  
 **Build**: #20+ - All builds successful  
 
@@ -21,7 +21,7 @@ This project creates a custom HubSpot UI Extension (CRM card) that displays Glea
 
 ## 🛠 Technical Stack
 
-- **Platform**: HubSpot UI Extensions (2023.2)
+- **Platform**: HubSpot UI Extensions (2025.1)
 - **Frontend**: React 18 + @hubspot/ui-extensions
 - **Build System**: HubSpot Projects with GitHub integration
 - **Deployment**: Auto-deploy on push to main branch
@@ -89,7 +89,7 @@ To enable the Glean API integration, you need to:
 
 The project is configured for:
 - **Account**: Standard Sandbox (ID: 47610017)
-- **Platform Version**: 2023.2
+- **Platform Version**: 2025.1
 - **Extension Type**: Private app (CRM card)
 
 ## 🔧 Build Status
@@ -110,7 +110,7 @@ The project is configured for:
 {
   "name": "glean-agent-extension",
   "srcDir": "src", 
-  "platformVersion": "2023.2"
+  "platformVersion": "2025.1"
 }
 ```
 

@@ -32,7 +32,7 @@ This guide covers the deployment process for the Glean-HubSpot UI Extension usin
 ### Build Status
 - **Recent builds**: All successful (#20+)
 - **Extension**: Successfully registered and functional
-- **Platform**: HubSpot 2023.2
+- **Platform**: HubSpot 2025.1
 
 ## 🔧 Configuration
 
@@ -59,7 +59,7 @@ To enable full functionality:
 
 The project is pre-configured for:
 - **Account**: Standard Sandbox (47610017)
-- **Platform Version**: 2023.2
+- **Platform Version**: 2025.1
 - **Extension Type**: Private app (CRM card)
 
 ## 📊 Project Structure
