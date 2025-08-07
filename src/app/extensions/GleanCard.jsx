@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
-const GleanCard = ({ context, actions }) => {
+const GleanCard = ({ context, actions, runServerlessFunction }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -32,18 +32,18 @@ const GleanCard = ({ context, actions }) => {
       console.log('Calling Glean API via HubSpot serverless function for:', companyName);
       
       // Call HubSpot serverless function (bypasses CSP restrictions)
-      const functionResult = await actions.callServerlessFunction({
-        functionName: 'glean-proxy',
-        payload: {
+      const { response } = await runServerlessFunction({
+        name: 'glean-proxy',
+        parameters: {
           companyName: companyName
         }
       });
       
-      if (functionResult.error) {
-        throw new Error(functionResult.error.message || 'Serverless function error');
+      if (response.statusCode !== 200) {
+        throw new Error(response.body?.message || 'Serverless function error');
       }
       
-      setResult(functionResult.response);
+      setResult(JSON.parse(response.body));
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
@@ -127,6 +127,6 @@ const GleanCard = ({ context, actions }) => {
   );
 };
 
-hubspot.extend(({ context, actions }) => (
-  <GleanCard context={context} actions={actions} />
+hubspot.extend(({ context, actions, runServerlessFunction }) => (
+  <GleanCard context={context} actions={actions} runServerlessFunction={runServerlessFunction} />
 )); 
