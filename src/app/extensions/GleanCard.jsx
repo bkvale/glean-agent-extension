@@ -72,24 +72,23 @@ const GleanCard = ({ context, actions }) => {
 
   return (
     <Box padding="medium">
-      <Text variant="h3">Strategic Account Plan</Text>
       
       {!result && !isLoading && !error && (
         <Box padding="small">
-          <Text>Generate a strategic account plan for this company using Glean AI.</Text>
+          <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
           <Button 
             variant="primary" 
             onClick={runStrategicAccountPlan}
             disabled={isLoading}
           >
-            Run Strategic Account Plan
+            Generate Plan
           </Button>
         </Box>
       )}
 
       {isLoading && (
         <Box padding="small">
-          <Text>⏳ Running Strategic Account Plan...</Text>
+          <Text>⏳ Generating Strategic Account Plan...</Text>
         </Box>
       )}
 
