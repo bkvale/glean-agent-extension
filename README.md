@@ -179,5 +179,5 @@ npm run format   # Format code with Prettier
 
 ---
 
-**Last Updated**: Build #7 deployed successfully, testing on parent dev account (242835255) with public app beta access.  
-**Next Steps**: Verify if account provisioning resolves extension registration issue. 
+**Last Updated**: Build #7 deployed successfully on ProductionSandbox (47610017), extension registration issue confirmed as HubSpot platform bug.  
+**Next Steps**: Contact HubSpot Support with evidence package. 
