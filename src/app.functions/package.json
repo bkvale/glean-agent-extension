@@ -2,8 +2,5 @@
   "name": "glean-agent-serverless-functions",
   "version": "1.0.0",
   "description": "Serverless functions for Glean Agent integration",
-  "private": true,
-  "dependencies": {
-    "axios": "^1.6.7"
-  }
+  "private": true
 } 

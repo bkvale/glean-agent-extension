@@ -1,6 +1,4 @@
 // HubSpot Serverless Function to proxy Glean API requests
-const axios = require('axios');
-
 exports.main = async (context = {}) => {
   console.log('Glean proxy function called with context:', JSON.stringify(context, null, 2));
   
@@ -31,23 +29,40 @@ exports.main = async (context = {}) => {
       };
     }
     
-    const response = await axios.post('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
-      agent_id: '5057a8a588c649d6b1231d648a9167c8',
-      input: {
-        company_name: companyName
-      }
-    }, {
+    const response = await fetch('https://trace3-be.glean.com/rest/api/v1/agents/runs/wait', {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({
+        agent_id: '5057a8a588c649d6b1231d648a9167c8',
+        input: {
+          company_name: companyName
+        }
+      })
     });
 
+    console.log('Glean API response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Glean API error response:', errorText);
+      return {
+        statusCode: response.status,
+        body: {
+          error: `Glean API error: ${response.status} ${response.statusText}`,
+          details: errorText
+        }
+      };
+    }
+
+    const data = await response.json();
     console.log('Glean API success, returning data');
     
     return {
       statusCode: 200,
-      body: response.data
+      body: data
     };
     
   } catch (error) {
