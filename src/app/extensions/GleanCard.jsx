@@ -98,10 +98,9 @@ const GleanCard = ({ context, actions }) => {
       {result && (
         <Box padding="small">
           <Text variant="h4">Strategic Account Plan Results:</Text>
-          <Text>Status: {result.run?.status}</Text>
           {result.messages?.map((message, index) => (
             <Box key={index} padding="small">
-              <Text variant="bold">{message.role}:</Text>
+              <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
               {message.content?.map((content, contentIndex) => (
                 <Text key={contentIndex}>{content.text}</Text>
               ))}
