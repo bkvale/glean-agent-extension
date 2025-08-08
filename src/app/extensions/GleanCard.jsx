@@ -53,7 +53,9 @@ const GleanCard = ({ context, actions }) => {
       console.error('Error type:', err.name);
       console.error('Error stack:', err.stack);
 
-      if (err.message.includes('Failed to fetch')) {
+      if (err.message.includes('timeout')) {
+        setError(`The Glean agent is taking longer than expected to respond. This is normal for complex analysis. Please try again in a few minutes, or contact your administrator if this persists.`);
+      } else if (err.message.includes('Failed to fetch')) {
         setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
       } else if (err.message.includes('Bearer token')) {
         setError(err.message);

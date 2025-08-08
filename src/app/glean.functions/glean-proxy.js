@@ -43,7 +43,7 @@ exports.main = async (context = {}) => {
       port: 443,
       path: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
-      timeout: 12000, // 12 second timeout (just under HubSpot's 15s limit)
+      timeout: 8000, // 8 second timeout (well under HubSpot's 10s limit)
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json',
