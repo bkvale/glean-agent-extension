@@ -35,6 +35,8 @@ const GleanCard = ({ context, actions }) => {
       });
 
       console.log('Serverless function response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Response keys:', Object.keys(response || {}));
 
       if (!response) {
         throw new Error('No response from serverless function');
@@ -43,12 +45,23 @@ const GleanCard = ({ context, actions }) => {
       // The serverless function returns { statusCode: 200, body: data }
       // We need to access response.body for the actual Glean data
       const gleanData = response.body || response;
+      
+      console.log('Glean data after extraction:', gleanData);
+      console.log('Glean data type:', typeof gleanData);
+      console.log('Glean data keys:', Object.keys(gleanData || {}));
 
       // Add validation for response structure
+      if (!gleanData || typeof gleanData !== 'object') {
+        console.error('Glean data is not an object:', gleanData);
+        throw new Error('Invalid response structure: gleanData is not an object');
+      }
+
       if (!gleanData.messages || !Array.isArray(gleanData.messages)) {
-        console.error('Invalid response structure:', response);
-        console.error('Glean data structure:', gleanData);
-        throw new Error('Invalid response structure from serverless function');
+        console.error('Invalid response structure - full response:', JSON.stringify(response, null, 2));
+        console.error('Invalid response structure - glean data:', JSON.stringify(gleanData, null, 2));
+        console.error('Messages property:', gleanData.messages);
+        console.error('Messages is array?', Array.isArray(gleanData.messages));
+        throw new Error(`Invalid response structure: expected messages array, got ${typeof gleanData.messages}`);
       }
 
       console.log('Setting result with messages:', gleanData.messages);

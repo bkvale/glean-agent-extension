@@ -85,12 +85,15 @@ exports.main = async (context = {}) => {
       req.write(postData);
       req.end();
     });
-    console.log('Glean API success, returning data');
+    console.log('Glean API success, raw data received:', JSON.stringify(data, null, 2));
     
-    return {
+    const response = {
       statusCode: 200,
       body: data
     };
+    
+    console.log('Final response being returned:', JSON.stringify(response, null, 2));
+    return response;
     
   } catch (error) {
     console.error('Glean proxy function error:', error);
