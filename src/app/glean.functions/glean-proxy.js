@@ -41,8 +41,9 @@ exports.main = async (context = {}) => {
     const options = {
       hostname: 'trace3-be.glean.com',
       port: 443,
-      path: '/rest/api/v1/agents/runs/wait',
+      path: '/rest/api/v1/agents/runs', // Start the run (async)
       method: 'POST',
+      timeout: 10000, // 10 second timeout for starting the run
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json',
@@ -76,14 +77,23 @@ exports.main = async (context = {}) => {
         reject(error);
       });
       
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout - Glean API took too long to respond'));
+      });
+      
       req.write(postData);
       req.end();
     });
-    console.log('Glean API success, returning data');
+    console.log('Glean API run started, returning run ID');
     
     return {
       statusCode: 200,
-      body: data
+      body: {
+        runId: data.run_id,
+        status: 'started',
+        message: 'Agent run started successfully. Results will be available shortly.'
+      }
     };
     
   } catch (error) {
