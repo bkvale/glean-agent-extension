@@ -40,14 +40,19 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('No response from serverless function');
       }
 
+      // The serverless function returns { statusCode: 200, body: data }
+      // We need to access response.body for the actual Glean data
+      const gleanData = response.body || response;
+
       // Add validation for response structure
-      if (!response.messages || !Array.isArray(response.messages)) {
+      if (!gleanData.messages || !Array.isArray(gleanData.messages)) {
         console.error('Invalid response structure:', response);
+        console.error('Glean data structure:', gleanData);
         throw new Error('Invalid response structure from serverless function');
       }
 
-      console.log('Setting result with messages:', response.messages);
-      setResult(response);
+      console.log('Setting result with messages:', gleanData.messages);
+      setResult(gleanData);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
