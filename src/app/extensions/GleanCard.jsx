@@ -40,18 +40,7 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('No response from serverless function');
       }
 
-      // Handle async agent response
-      if (response.runId) {
-        console.log('Agent run started with ID:', response.runId);
-        setResult({
-          status: 'started',
-          runId: response.runId,
-          message: response.message || 'Agent run started successfully. This may take a minute to complete.'
-        });
-        return;
-      }
-
-      // Handle completed response
+      // Add validation for response structure
       if (!response.messages || !Array.isArray(response.messages)) {
         console.error('Invalid response structure:', response);
         throw new Error('Invalid response structure from serverless function');
@@ -115,52 +104,32 @@ const GleanCard = ({ context, actions }) => {
 
       {result && (
         <Box padding="small">
-          {result.status === 'started' ? (
-            <Box>
-              <Text variant="h4">Agent Run Started</Text>
-              <Text>{result.message}</Text>
-              <Text variant="microcopy">Run ID: {result.runId}</Text>
-              <Text>⏳ The agent is processing your request. This may take a minute or more.</Text>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setResult(null);
-                  setError(null);
-                }}
-              >
-                Start New Analysis
-              </Button>
-            </Box>
+          <Text variant="h4">Strategic Account Plan Results:</Text>
+          {result.messages && Array.isArray(result.messages) ? (
+            result.messages.map((message, index) => (
+              <Box key={index} padding="small">
+                <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
+                {message.content && Array.isArray(message.content) ? (
+                  message.content.map((content, contentIndex) => (
+                    <Text key={contentIndex}>{content.text || 'No text content'}</Text>
+                  ))
+                ) : (
+                  <Text>No content available</Text>
+                )}
+              </Box>
+            ))
           ) : (
-            <Box>
-              <Text variant="h4">Strategic Account Plan Results:</Text>
-              {result.messages && Array.isArray(result.messages) ? (
-                result.messages.map((message, index) => (
-                  <Box key={index} padding="small">
-                    <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
-                    {message.content && Array.isArray(message.content) ? (
-                      message.content.map((content, contentIndex) => (
-                        <Text key={contentIndex}>{content.text || 'No text content'}</Text>
-                      ))
-                    ) : (
-                      <Text>No content available</Text>
-                    )}
-                  </Box>
-                ))
-              ) : (
-                <Text>No messages in response</Text>
-              )}
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setResult(null);
-                  setError(null);
-                }}
-              >
-                Run New Analysis
-              </Button>
-            </Box>
+            <Text>No messages in response</Text>
           )}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setResult(null);
+              setError(null);
+            }}
+          >
+            Run New Analysis
+          </Button>
         </Box>
       )}
     </Box>

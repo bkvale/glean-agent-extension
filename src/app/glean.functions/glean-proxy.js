@@ -41,9 +41,9 @@ exports.main = async (context = {}) => {
     const options = {
       hostname: 'trace3-be.glean.com',
       port: 443,
-      path: '/rest/api/v1/agents/runs', // Start the run (async)
+      path: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
-      timeout: 10000, // 10 second timeout for starting the run
+      timeout: 12000, // 12 second timeout (just under HubSpot's 15s limit)
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json',
@@ -85,15 +85,11 @@ exports.main = async (context = {}) => {
       req.write(postData);
       req.end();
     });
-    console.log('Glean API run started, returning run ID');
+    console.log('Glean API success, returning data');
     
     return {
       statusCode: 200,
-      body: {
-        runId: data.run_id,
-        status: 'started',
-        message: 'Agent run started successfully. Results will be available shortly.'
-      }
+      body: data
     };
     
   } catch (error) {
