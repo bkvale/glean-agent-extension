@@ -19,8 +19,8 @@ exports.main = async (context = {}) => {
     
     console.log('Making Glean API request for company:', companyName);
     
-    // Use the Glean API token directly for now
-    const gleanToken = 'LOlifCRAD8smihnO8ETHiku7Rmy5zDO5hEgTruy6luQ=';
+    // Use the Glean API token with AGENTS scope
+    const gleanToken = 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=';
     
     if (!gleanToken) {
       return {
@@ -46,6 +46,7 @@ exports.main = async (context = {}) => {
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json',
+        'X-Glean-ActAs': 'ben.kvale@trace3.com',
         'Content-Length': Buffer.byteLength(postData)
       }
     };
