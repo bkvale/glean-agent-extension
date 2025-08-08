@@ -40,6 +40,13 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('No response from serverless function');
       }
 
+      // Add validation for response structure
+      if (!response.messages || !Array.isArray(response.messages)) {
+        console.error('Invalid response structure:', response);
+        throw new Error('Invalid response structure from serverless function');
+      }
+
+      console.log('Setting result with messages:', response.messages);
       setResult(response);
     } catch (err) {
       console.error('Error running Glean agent:', err);
@@ -98,14 +105,22 @@ const GleanCard = ({ context, actions }) => {
       {result && (
         <Box padding="small">
           <Text variant="h4">Strategic Account Plan Results:</Text>
-          {result.messages?.map((message, index) => (
-            <Box key={index} padding="small">
-              <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
-              {message.content?.map((content, contentIndex) => (
-                <Text key={contentIndex}>{content.text}</Text>
-              ))}
-            </Box>
-          ))}
+          {result.messages && Array.isArray(result.messages) ? (
+            result.messages.map((message, index) => (
+              <Box key={index} padding="small">
+                <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
+                {message.content && Array.isArray(message.content) ? (
+                  message.content.map((content, contentIndex) => (
+                    <Text key={contentIndex}>{content.text || 'No text content'}</Text>
+                  ))
+                ) : (
+                  <Text>No content available</Text>
+                )}
+              </Box>
+            ))
+          ) : (
+            <Text>No messages in response</Text>
+          )}
           <Button
             variant="secondary"
             onClick={() => {
