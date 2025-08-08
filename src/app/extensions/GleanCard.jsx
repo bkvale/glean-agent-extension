@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
-const GleanCard = ({ context, actions, runServerlessFunction }) => {
+const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  // Glean API token (can be moved to environment variables later)
-  const token = 'LOlifCRAD8smihnO8ETHiku7Rmy5zDO5hEgTruy6luQ=';
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -14,9 +12,7 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
     setResult(null);
 
     try {
-      // Get company name
       let companyName = 'Unknown Company';
-      
       if (actions && actions.fetchCrmObjectProperties) {
         try {
           const companyProperties = await actions.fetchCrmObjectProperties(['name']);
@@ -28,55 +24,28 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
       } else {
         companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
       }
-      
+
       console.log('Calling Glean API via HubSpot serverless function for:', companyName);
-      
-      // Call HubSpot serverless function (bypasses CSP restrictions)
-      const serverlessResult = await runServerlessFunction({
-        name: 'glean-proxy',
+
+      const response = await hubspot.serverless('glean-proxy', {
         propertiesToSend: ['name'],
         parameters: {
           companyName: companyName
         }
       });
-      
-      console.log('Serverless function result:', serverlessResult);
-      
-      // Handle error responses
-      if (serverlessResult.status === 'ERROR') {
-        throw new Error(serverlessResult.message || 'Serverless function failed');
+
+      console.log('Serverless function response:', response);
+
+      if (!response) {
+        throw new Error('No response from serverless function');
       }
-      
-      // The new format should return the response directly
-      if (serverlessResult.response) {
-        const response = serverlessResult.response;
-        console.log('Response object:', response);
-        
-        if (response.statusCode && response.statusCode !== 200) {
-          const errorData = typeof response.body === 'string' 
-            ? JSON.parse(response.body)
-            : response.body;
-          throw new Error(errorData?.error || errorData?.message || 'Serverless function error');
-        }
-        
-        // Parse the successful response
-        const resultData = typeof response.body === 'string' 
-          ? JSON.parse(response.body)
-          : response.body;
-        
-        console.log('Parsed result data:', resultData);
-        setResult(resultData);
-      } else {
-        // Direct response format
-        console.log('Direct response format:', serverlessResult);
-        setResult(serverlessResult);
-      }
+
+      setResult(response);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
       console.error('Error stack:', err.stack);
-      
-      // Provide more specific error messages
+
       if (err.message.includes('Failed to fetch')) {
         setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
       } else if (err.message.includes('Bearer token')) {
@@ -93,19 +62,18 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
 
   return (
     <Box padding="medium">
+      <Text variant="h3">Strategic Account Plan</Text>
+
       {!result && !isLoading && !error && (
         <Box padding="small">
           <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
-          <Button 
-            variant="primary" 
+          <Button
+            variant="primary"
             onClick={runStrategicAccountPlan}
             disabled={isLoading}
           >
             Generate Plan
           </Button>
-          <Box padding="small">
-            <Text variant="microcopy">🔄 Real Glean Integration: Uses HubSpot serverless function to call Trace3 Glean API.</Text>
-          </Box>
         </Box>
       )}
 
@@ -118,8 +86,8 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
       {error && (
         <Box padding="small">
           <Text variant="error">Error: {error}</Text>
-          <Button 
-            variant="secondary" 
+          <Button
+            variant="secondary"
             onClick={runStrategicAccountPlan}
           >
             Try Again
@@ -139,8 +107,8 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
               ))}
             </Box>
           ))}
-          <Button 
-            variant="secondary" 
+          <Button
+            variant="secondary"
             onClick={() => {
               setResult(null);
               setError(null);
@@ -154,6 +122,6 @@ const GleanCard = ({ context, actions, runServerlessFunction }) => {
   );
 };
 
-hubspot.extend(({ context, actions, runServerlessFunction }) => (
-  <GleanCard context={context} actions={actions} runServerlessFunction={runServerlessFunction} />
+hubspot.extend(({ context, actions }) => (
+  <GleanCard context={context} actions={actions} />
 )); 

@@ -4,6 +4,6 @@
   "description": "Serverless functions for Glean Agent integration",
   "private": true,
   "dependencies": {
-    "node-fetch": "^2.6.7"
+    "axios": "^1.6.7"
   }
 } 
