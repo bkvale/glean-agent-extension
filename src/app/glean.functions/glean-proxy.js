@@ -19,14 +19,14 @@ exports.main = async (context = {}) => {
     
     console.log('Making Glean API request for company:', companyName);
     
-    // Get the private app access token from environment variables
-    const gleanToken = process.env['GLEAN_API_TOKEN'];
+    // Use the Glean API token directly for now
+    const gleanToken = 'LOlifCRAD8smihnO8ETHiku7Rmy5zDO5hEgTruy6luQ=';
     
     if (!gleanToken) {
       return {
         statusCode: 500,
         body: {
-          error: 'Glean API token not configured in environment variables'
+          error: 'Glean API token not configured'
         }
       };
     }
