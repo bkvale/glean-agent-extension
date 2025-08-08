@@ -34,7 +34,7 @@ exports.main = async (context = {}) => {
     const postData = JSON.stringify({
       agent_id: '5057a8a588c649d6b1231d648a9167c8',
       input: {
-        company_name: companyName
+        "Company Name": companyName
       }
     });
 
