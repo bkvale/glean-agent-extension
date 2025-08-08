@@ -2,6 +2,7 @@
   "name": "glean-agent-extension",
   "srcDir": "src",
   "platformVersion": "2025.1",
+  "functionsDir": "src/app/glean.functions",
   "environment": {
     "GLEAN_API_TOKEN": ""
   }
