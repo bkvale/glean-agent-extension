@@ -46,7 +46,6 @@ exports.main = async (context = {}) => {
       headers: {
         'Authorization': `Bearer ${gleanToken}`,
         'Content-Type': 'application/json',
-        'X-Glean-ActAs': 'ben.kvale@trace3.com',
         'Content-Length': Buffer.byteLength(postData)
       }
     };
