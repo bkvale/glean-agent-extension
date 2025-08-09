@@ -42,6 +42,13 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('No response from serverless function');
       }
 
+      // Check if the serverless function returned an error
+      if (response.statusCode && response.statusCode !== 200) {
+        console.error('Serverless function error:', response);
+        const errorMessage = response.body?.error || response.body?.message || 'Unknown serverless function error';
+        throw new Error(`Serverless function failed: ${errorMessage}`);
+      }
+
       // The serverless function returns { statusCode: 200, body: data }
       // We need to access response.body for the actual Glean data
       const gleanData = response.body || response;
