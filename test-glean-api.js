@@ -41,9 +41,7 @@ async function testGleanAPI() {
   
   const postData = JSON.stringify({
     agent_id: CONFIG.GLEAN_AGENT_ID,
-    input: {
-      "Company Name": testCompany
-    }
+    query: `Generate a strategic account plan for ${testCompany}`
   });
 
   const options = {

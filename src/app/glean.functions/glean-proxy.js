@@ -44,12 +44,10 @@ async function makeGleanRequest(companyName, attempt = 1) {
     } 
   });
 
-  const postData = JSON.stringify({
-    agent_id: CONFIG.GLEAN_AGENT_ID,
-    input: {
-      "Company Name": companyName
-    }
-  });
+      const postData = JSON.stringify({
+      agent_id: CONFIG.GLEAN_AGENT_ID,
+      query: `Generate a strategic account plan for ${companyName}`
+    });
 
       const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
