@@ -1,6 +1,27 @@
 import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
+// Architecture stubs for future async flow and external worker support
+const FEATURE_FLAGS = {
+  USE_ASYNC_FLOW: false, // Branch A: Start + Poll async flow
+  USE_EXTERNAL_WORKER: false // Branch B: External worker service
+};
+
+// Content persistence hooks (no-op for now)
+const savePlan = async (companyId, content, metadata) => {
+  // TODO: Implement storage strategy
+  // Preferred: custom object associated to Company for run history/versioning
+  // Fallback: long-text Company property
+  console.log('savePlan called:', { companyId, contentLength: content?.length, metadata });
+  return { success: true, timestamp: new Date().toISOString() };
+};
+
+const getLatestPlan = async (companyId) => {
+  // TODO: Implement retrieval strategy
+  console.log('getLatestPlan called:', { companyId });
+  return null;
+};
+
 const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -71,24 +92,48 @@ const GleanCard = ({ context, actions }) => {
         throw new Error(`Invalid response structure: expected messages array, got ${typeof gleanData.messages}`);
       }
 
-      console.log('Setting result with messages:', gleanData.messages);
-      setResult(gleanData);
+                        console.log('Setting result with messages:', gleanData.messages);
+                  
+                  // Save the plan to persistent storage
+                  if (gleanData.messages && Array.isArray(gleanData.messages)) {
+                    const companyId = context.crm?.objectId;
+                    const planContent = gleanData.messages
+                      .map(msg => msg.content?.map(c => c.text).join(' '))
+                      .join('\n\n');
+                    
+                    try {
+                      await savePlan(companyId, planContent, {
+                        timestamp: new Date().toISOString(),
+                        companyName,
+                        duration: gleanData.metadata?.duration
+                      });
+                    } catch (saveError) {
+                      console.warn('Failed to save plan:', saveError);
+                      // Don't fail the UI if save fails
+                    }
+                  }
+                  
+                  setResult(gleanData);
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
       console.error('Error stack:', err.stack);
 
-      if (err.message.includes('timeout')) {
-        setError(`The Glean agent is taking longer than expected to respond. This is normal for complex analysis. Please try again in a few minutes, or contact your administrator if this persists.`);
-      } else if (err.message.includes('Failed to fetch')) {
-        setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
-      } else if (err.message.includes('Bearer token')) {
-        setError(err.message);
-      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
-      } else {
-        setError(`Error: ${err.message}`);
-      }
+                        // Handle categorized errors from serverless function
+                  if (err.message.includes('Serverless function failed:')) {
+                    const errorBody = err.message.replace('Serverless function failed: ', '');
+                    setError(errorBody);
+                  } else if (err.message.includes('timeout')) {
+                    setError(`The Glean agent is taking longer than expected to respond. This is normal for complex analysis. Please try again in a few minutes, or contact your administrator if this persists.`);
+                  } else if (err.message.includes('Failed to fetch')) {
+                    setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
+                  } else if (err.message.includes('Bearer token')) {
+                    setError(err.message);
+                  } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                    setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
+                  } else {
+                    setError(`Error: ${err.message}`);
+                  }
     } finally {
       setIsLoading(false);
     }
@@ -161,7 +206,7 @@ const GleanCard = ({ context, actions }) => {
       )}
     </Box>
   );
-};
+}; 
 
 hubspot.extend(({ context, actions }) => (
   <GleanCard context={context} actions={actions} />
