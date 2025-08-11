@@ -10,7 +10,8 @@ const readline = require('readline');
 
 // Configuration - reads from environment variables
 const CONFIG = {
-  GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || 'trace3-be.glean.com',
+  GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
+  GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
   GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000
@@ -26,6 +27,7 @@ console.log('🧪 Glean API Smoke Test');
 console.log('======================');
 console.log(`Company: ${testCompany}`);
 console.log(`Timeout: ${timeoutMs}ms`);
+console.log(`Instance: ${CONFIG.GLEAN_INSTANCE}`);
 console.log(`Base URL: ${CONFIG.GLEAN_BASE_URL}`);
 console.log(`Agent ID: ${CONFIG.GLEAN_AGENT_ID}`);
 console.log(`Token: ${CONFIG.GLEAN_API_TOKEN.substring(0, 10)}...`);

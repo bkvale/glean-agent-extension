@@ -3,7 +3,8 @@ const https = require('https');
 
 // Configuration with environment variable fallbacks
 const CONFIG = {
-  GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || 'trace3-be.glean.com',
+  GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
+  GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
   GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s default, well under HubSpot's 10s limit
@@ -166,6 +167,7 @@ exports.main = async (context = {}) => {
     contextKeys: Object.keys(context),
     hasParameters: !!context.parameters,
     config: {
+      instance: CONFIG.GLEAN_INSTANCE,
       baseUrl: CONFIG.GLEAN_BASE_URL,
       agentId: CONFIG.GLEAN_AGENT_ID,
       timeoutMs: CONFIG.TIMEOUT_MS,
