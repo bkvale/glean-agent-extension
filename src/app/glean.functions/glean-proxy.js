@@ -51,18 +51,18 @@ async function makeGleanRequest(companyName, attempt = 1) {
     }
   });
 
-  const options = {
-    hostname: CONFIG.GLEAN_BASE_URL,
-    port: 443,
-    path: '/rest/api/v1/agents/runs/wait',
-    method: 'POST',
-    timeout: CONFIG.TIMEOUT_MS,
-    headers: {
-      'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData)
-    }
-  };
+      const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: '/rest/api/v1/agents/runs/stream',
+      method: 'POST',
+      timeout: CONFIG.TIMEOUT_MS,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
 
   log.http('http_request_outbound', { 
     url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/wait`,
@@ -86,32 +86,56 @@ async function makeGleanRequest(companyName, attempt = 1) {
         responseData += chunk;
       });
       
-      res.on('end', () => {
-        const responseDuration = Date.now() - responseStartTime;
-        const totalDuration = Date.now() - startTime;
-        
-        log.http('http_response_complete', { 
-          statusCode: res.statusCode,
-          responseSize: responseData.length,
-          responseDuration,
-          totalDuration,
-          attempt
-        });
-        
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const parsedData = JSON.parse(responseData);
-            log.success('parse_success', { 
-              dataKeys: Object.keys(parsedData),
-              hasMessages: parsedData.messages ? Array.isArray(parsedData.messages) : false,
-              messageCount: parsedData.messages ? parsedData.messages.length : 0
-            });
-            resolve(parsedData);
-          } catch (error) {
-            log.error('parse_error', error);
-            reject(new Error(`Invalid JSON response: ${error.message}`));
-          }
-        } else {
+                      res.on('end', () => {
+                  const responseDuration = Date.now() - responseStartTime;
+                  const totalDuration = Date.now() - startTime;
+                  
+                  log.http('http_response_complete', { 
+                    statusCode: res.statusCode,
+                    responseSize: responseData.length,
+                    responseDuration,
+                    totalDuration,
+                    attempt
+                  });
+                  
+                  if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                      // Handle streaming response - collect all chunks
+                      const lines = responseData.split('\n').filter(line => line.trim());
+                      const events = [];
+                      
+                      for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                          const data = line.substring(6); // Remove 'data: ' prefix
+                          if (data.trim() && data !== '[DONE]') {
+                            try {
+                              const parsed = JSON.parse(data);
+                              events.push(parsed);
+                            } catch (e) {
+                              // Skip invalid JSON chunks
+                            }
+                          }
+                        }
+                      }
+                      
+                      // Find the final result
+                      const finalEvent = events.find(event => event.type === 'final' || event.status === 'completed');
+                      const result = finalEvent || events[events.length - 1] || {};
+                      
+                      log.success('stream_parse_success', { 
+                        totalEvents: events.length,
+                        hasFinalEvent: !!finalEvent,
+                        dataKeys: Object.keys(result),
+                        hasMessages: result.messages ? Array.isArray(result.messages) : false,
+                        messageCount: result.messages ? result.messages.length : 0
+                      });
+                      
+                      resolve(result);
+                    } catch (error) {
+                      log.error('stream_parse_error', error);
+                      reject(new Error(`Invalid streaming response: ${error.message}`));
+                    }
+                  } else {
           // Handle 5xx errors with retry logic
           if (res.statusCode >= 500 && attempt < CONFIG.MAX_RETRIES) {
             const backoffMs = Math.pow(2, attempt) * 1000; // Exponential backoff

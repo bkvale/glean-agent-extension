@@ -49,7 +49,7 @@ async function testGleanAPI() {
   const options = {
     hostname: CONFIG.GLEAN_BASE_URL,
     port: 443,
-    path: '/rest/api/v1/agents/runs/wait',
+    path: '/rest/api/v1/agents/runs/stream',
     method: 'POST',
     timeout: timeoutMs,
     headers: {
@@ -77,15 +77,37 @@ async function testGleanAPI() {
         
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
-            const parsedData = JSON.parse(responseData);
-            console.log('✅ Parse success');
-            console.log(`📋 Data keys: ${Object.keys(parsedData).join(', ')}`);
+            // Handle streaming response
+            const lines = responseData.split('\n').filter(line => line.trim());
+            const events = [];
             
-            if (parsedData.messages && Array.isArray(parsedData.messages)) {
-              console.log(`💬 Messages: ${parsedData.messages.length}`);
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6); // Remove 'data: ' prefix
+                if (data.trim() && data !== '[DONE]') {
+                  try {
+                    const parsed = JSON.parse(data);
+                    events.push(parsed);
+                  } catch (e) {
+                    // Skip invalid JSON chunks
+                  }
+                }
+              }
+            }
+            
+            // Find the final result
+            const finalEvent = events.find(event => event.type === 'final' || event.status === 'completed');
+            const result = finalEvent || events[events.length - 1] || {};
+            
+            console.log('✅ Stream parse success');
+            console.log(`📊 Total events: ${events.length}`);
+            console.log(`📋 Data keys: ${Object.keys(result).join(', ')}`);
+            
+            if (result.messages && Array.isArray(result.messages)) {
+              console.log(`💬 Messages: ${result.messages.length}`);
               
               // Show first 200 chars of first message
-              const firstMessage = parsedData.messages[0];
+              const firstMessage = result.messages[0];
               if (firstMessage && firstMessage.content && Array.isArray(firstMessage.content)) {
                 const text = firstMessage.content.map(c => c.text).join(' ');
                 console.log(`📝 Preview: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
@@ -96,7 +118,8 @@ async function testGleanAPI() {
               status: 'success',
               duration,
               statusCode: res.statusCode,
-              data: parsedData
+              data: result,
+              events: events.length
             });
           } catch (error) {
             console.log('❌ Parse error:', error.message);
