@@ -18,7 +18,8 @@ const CONFIG = {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const timeoutMs = args.find(arg => arg.startsWith('--timeoutMs='))?.split('=')[1] || CONFIG.TIMEOUT_MS;
+const timeoutArg = args.find(arg => arg.startsWith('--timeoutMs='));
+const timeoutMs = timeoutArg ? parseInt(timeoutArg.split('=')[1]) : CONFIG.TIMEOUT_MS;
 const testCompany = args.find(arg => !arg.startsWith('--')) || 'Test Company Inc.';
 
 console.log('🧪 Glean API Smoke Test');
