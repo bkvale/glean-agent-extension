@@ -26,6 +26,7 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [asyncMode, setAsyncMode] = useState(false);
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -51,7 +52,8 @@ const GleanCard = ({ context, actions }) => {
       const response = await hubspot.serverless('glean-proxy', {
         propertiesToSend: ['name'],
         parameters: {
-          companyName: companyName
+          companyName: companyName,
+          asyncMode: asyncMode
         }
       });
 
@@ -124,7 +126,7 @@ const GleanCard = ({ context, actions }) => {
                     const errorBody = err.message.replace('Serverless function failed: ', '');
                     setError(errorBody);
                   } else if (err.message.includes('timeout')) {
-                    setError(`The Glean agent is taking longer than expected to respond. This is normal for complex analysis. Please try again in a few minutes, or contact your administrator if this persists.`);
+                    setError(`The Glean agent is taking longer than expected to respond (30+ seconds). This is normal for complex analysis. Consider enabling async mode for long-running agents.`);
                   } else if (err.message.includes('Failed to fetch')) {
                     setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
                   } else if (err.message.includes('Bearer token')) {
@@ -143,18 +145,31 @@ const GleanCard = ({ context, actions }) => {
     <Box padding="medium">
       <Text variant="h3">Strategic Account Plan</Text>
 
-      {!result && !isLoading && !error && (
-        <Box padding="small">
-          <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
-          <Button
-            variant="primary"
-            onClick={runStrategicAccountPlan}
-            disabled={isLoading}
-          >
-            Generate Plan
-          </Button>
-        </Box>
-      )}
+                        {!result && !isLoading && !error && (
+                    <Box padding="small">
+                      <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
+                      
+                      <Box padding="small">
+                        <Text variant="small">
+                          <input
+                            type="checkbox"
+                            checked={asyncMode}
+                            onChange={(e) => setAsyncMode(e.target.checked)}
+                            style={{ marginRight: '8px' }}
+                          />
+                          Enable async mode (for agents that take 30+ seconds)
+                        </Text>
+                      </Box>
+                      
+                      <Button
+                        variant="primary"
+                        onClick={runStrategicAccountPlan}
+                        disabled={isLoading}
+                      >
+                        Generate Plan
+                      </Button>
+                    </Box>
+                  )}
 
       {isLoading && (
         <Box padding="small">

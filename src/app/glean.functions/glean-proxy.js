@@ -8,7 +8,8 @@ const CONFIG = {
   GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s default, well under HubSpot's 10s limit
-  MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1
+  MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1,
+  USE_ASYNC_FLOW: process.env.USE_ASYNC_FLOW === 'true' || false
 };
 
 // High-signal diagnostic logging
@@ -46,13 +47,15 @@ async function makeGleanRequest(companyName, attempt = 1) {
 
       const postData = JSON.stringify({
       agent_id: CONFIG.GLEAN_AGENT_ID,
-      query: `Generate a strategic account plan for ${companyName}`
+      input: {
+        "Company Name": companyName
+      }
     });
 
       const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
       port: 443,
-      path: '/rest/api/v1/agents/runs/stream',
+      path: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
       timeout: CONFIG.TIMEOUT_MS,
       headers: {
@@ -98,40 +101,16 @@ async function makeGleanRequest(companyName, attempt = 1) {
                   
                   if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
-                      // Handle streaming response - collect all chunks
-                      const lines = responseData.split('\n').filter(line => line.trim());
-                      const events = [];
-                      
-                      for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                          const data = line.substring(6); // Remove 'data: ' prefix
-                          if (data.trim() && data !== '[DONE]') {
-                            try {
-                              const parsed = JSON.parse(data);
-                              events.push(parsed);
-                            } catch (e) {
-                              // Skip invalid JSON chunks
-                            }
-                          }
-                        }
-                      }
-                      
-                      // Find the final result
-                      const finalEvent = events.find(event => event.type === 'final' || event.status === 'completed');
-                      const result = finalEvent || events[events.length - 1] || {};
-                      
-                      log.success('stream_parse_success', { 
-                        totalEvents: events.length,
-                        hasFinalEvent: !!finalEvent,
-                        dataKeys: Object.keys(result),
-                        hasMessages: result.messages ? Array.isArray(result.messages) : false,
-                        messageCount: result.messages ? result.messages.length : 0
+                      const parsedData = JSON.parse(responseData);
+                      log.success('parse_success', { 
+                        dataKeys: Object.keys(parsedData),
+                        hasMessages: parsedData.messages ? Array.isArray(parsedData.messages) : false,
+                        messageCount: parsedData.messages ? parsedData.messages.length : 0
                       });
-                      
-                      resolve(result);
+                      resolve(parsedData);
                     } catch (error) {
-                      log.error('stream_parse_error', error);
-                      reject(new Error(`Invalid streaming response: ${error.message}`));
+                      log.error('parse_error', error);
+                      reject(new Error(`Invalid JSON response: ${error.message}`));
                     }
                   } else {
           // Handle 5xx errors with retry logic
@@ -198,7 +177,7 @@ exports.main = async (context = {}) => {
   });
   
   try {
-    const { companyName } = context.parameters || {};
+    const { companyName, asyncMode } = context.parameters || {};
     
     if (!companyName) {
       log.error('validation_error', { error: 'Company name is required', received: context });
@@ -223,37 +202,66 @@ exports.main = async (context = {}) => {
       };
     }
     
-    // Make the Glean API request
-    const data = await makeGleanRequest(companyName);
-    
-    const totalDuration = Date.now() - functionStartTime;
-    
-    log.success('glean_api_success', { 
-      companyName,
-      totalDuration,
-      dataKeys: Object.keys(data),
-      messageCount: data.messages ? data.messages.length : 0
-    });
-    
-    const response = {
-      statusCode: 200,
-      body: {
-        ...data,
-        metadata: {
-          duration: totalDuration,
+    // Check if we should use async flow for long-running agents
+    if (CONFIG.USE_ASYNC_FLOW || asyncMode) {
+      // Start the agent asynchronously and return immediately
+      log.start('async_flow_start', { companyName });
+      
+      // Start the agent (this will run in background)
+      makeGleanRequest(companyName).catch(error => {
+        log.error('async_agent_error', error);
+      });
+      
+      const response = {
+        statusCode: 202, // Accepted
+        body: {
+          status: 'started',
+          message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
+          companyName,
           timestamp: new Date().toISOString(),
-          companyName
+          async: true
         }
-      }
-    };
-    
-    log.return('return_to_ui', { 
-      statusCode: response.statusCode,
-      bodyKeys: Object.keys(response.body),
-      hasMetadata: !!response.body.metadata
-    });
-    
-    return response;
+      };
+      
+      log.return('async_flow_return', { 
+        statusCode: response.statusCode,
+        message: response.body.message
+      });
+      
+      return response;
+    } else {
+      // Synchronous flow (current approach)
+      const data = await makeGleanRequest(companyName);
+      
+      const totalDuration = Date.now() - functionStartTime;
+      
+      log.success('glean_api_success', { 
+        companyName,
+        totalDuration,
+        dataKeys: Object.keys(data),
+        messageCount: data.messages ? data.messages.length : 0
+      });
+      
+      const response = {
+        statusCode: 200,
+        body: {
+          ...data,
+          metadata: {
+            duration: totalDuration,
+            timestamp: new Date().toISOString(),
+            companyName
+          }
+        }
+      };
+      
+      log.return('return_to_ui', { 
+        statusCode: response.statusCode,
+        bodyKeys: Object.keys(response.body),
+        hasMetadata: !!response.body.metadata
+      });
+      
+      return response;
+    }
     
   } catch (error) {
     const totalDuration = Date.now() - functionStartTime;
