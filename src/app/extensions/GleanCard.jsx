@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
 const GleanCard = ({ context, actions }) => {
   const [companyName, setCompanyName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGleanReady, setIsGleanReady] = useState(false);
+  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const gleanContainerRef = useRef(null);
 
   // Get company name from HubSpot context
   useEffect(() => {
@@ -23,154 +22,151 @@ const GleanCard = ({ context, actions }) => {
     fetchCompanyName();
   }, [actions]);
 
-  // Load Glean Web SDK safely
-  useEffect(() => {
-    // Only run in browser environment
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const loadGleanSDK = async () => {
-      try {
-        // Check if already loaded
-        if (window.GleanWebSDK) {
-          setIsGleanReady(true);
-          return;
-        }
-
-        // Load the Glean Web SDK script
-        const script = document.createElement('script');
-        script.src = 'https://app.glean.com/embedded-search-latest.min.js';
-        script.defer = true;
-        
-        script.onload = () => {
-          // Listen for Glean ready event
-          window.addEventListener('glean:ready', () => {
-            setIsGleanReady(true);
-          });
-          
-          // If already ready, set immediately
-          if (window.GleanWebSDK) {
-            setIsGleanReady(true);
-          }
-        };
-        
-        script.onerror = (error) => {
-          console.error('Failed to load Glean Web SDK:', error);
-          setError('Failed to load Glean AI Agent. Please refresh the page and try again.');
-        };
-        
-        document.head.appendChild(script);
-      } catch (error) {
-        console.error('Error loading Glean SDK:', error);
-        setError('Failed to load Glean AI Agent.');
-      }
-    };
-
-    loadGleanSDK();
-  }, []);
-
-  // Initialize Glean chat when ready
-  useEffect(() => {
-    if (typeof window === 'undefined' || !isGleanReady || !gleanContainerRef.current || !companyName) {
-      return;
-    }
+  const runStrategicAccountPlan = async () => {
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
 
     try {
-      // Follow the Glean embed guidelines exactly
-      window.GleanWebSDK.renderChat(gleanContainerRef.current, {
-        agentId: "5057a8a588c649d6b1231d648a9167c8",
-        initialMessage: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-        backend: "https://trace3-be.glean.com/",
-        landingPage: "chat",
-        authMethod: "sso",
-        themeVariant: "auto",
-        customizations: {
-          features: {
-            agentLibrary: false,      // Focus on our specific agent
-            applicationLibrary: false,
-            createPrompt: false,      // Simplify UI
-            promptLibrary: false,
-            chatMenu: true,           // Keep chat history
-            chatSettings: true,       // Keep settings
-            clearChat: true,          // Allow clearing chat
-            feedback: true,           // Keep feedback
-            newChatButton: true       // Allow new chats
-          },
-          container: {
-            border: "1px solid #e1e5e9",
-            borderRadius: 8,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-            horizontalMargin: 0,
-            verticalMargin: 16
-          }
+      console.log('Starting Glean agent execution for:', companyName);
+
+      // Use the serverless function to execute the Glean agent
+      const response = await hubspot.serverless('glean-proxy', {
+        propertiesToSend: ['name'],
+        parameters: {
+          companyName: companyName
         }
       });
-      
-    } catch (error) {
-      console.error('Error initializing Glean chat:', error);
-      setError('Failed to initialize Glean AI Agent. Please refresh the page and try again.');
-    }
-  }, [isGleanReady, companyName]);
 
-  // Show error state
-  if (error) {
-    return (
-      <Box padding="medium">
-        <Text variant="h3">Strategic Account Plan</Text>
-        <Box padding="small">
-          <Text variant="error">Error: {error}</Text>
-          <Button
-            variant="secondary"
-            onClick={() => window.location.reload()}
-          >
-            Refresh Page
-          </Button>
-        </Box>
-      </Box>
-    );
-  }
+      console.log('Serverless function response:', response);
+
+      if (!response) {
+        throw new Error('No response from serverless function');
+      }
+
+      // Check if the serverless function returned an error
+      if (response.statusCode && response.statusCode !== 200) {
+        console.error('Serverless function error:', response);
+        const errorMessage = response.body?.error || response.body?.message || 'Unknown serverless function error';
+        throw new Error(`Serverless function failed: ${errorMessage}`);
+      }
+
+      // Extract the response data
+      const gleanData = response.body || response;
+      
+      console.log('Glean data after extraction:', gleanData);
+
+      // Handle successful response
+      if (response.statusCode === 200 && gleanData.messages) {
+        console.log('Strategic plan generated successfully:', gleanData);
+        setResult(gleanData);
+        return;
+      }
+
+      // Handle unexpected response format
+      console.error('Unexpected response format:', gleanData);
+      setResult({
+        error: true,
+        message: 'Received response from Glean but it was in an unexpected format. Please try again.',
+        rawData: gleanData
+      });
+      
+    } catch (err) {
+      console.error('Error running Glean agent:', err);
+      
+      // Handle categorized errors from serverless function
+      if (err.message.includes('Serverless function failed:')) {
+        const errorBody = err.message.replace('Serverless function failed: ', '');
+        setError(errorBody);
+      } else if (err.message.includes('AGENT_TIMEOUT') || err.message.includes('STREAM_TIMEOUT')) {
+        setError(`The Glean agent is taking longer than expected to respond (exceeded HubSpot's timeout limits). This is a known compatibility issue between long-running AI agents and HubSpot's serverless function constraints.`);
+      } else if (err.message.includes('AUTH_ERROR')) {
+        setError(`Authentication error: The Glean API token may not have the required 'agents' scope permissions. Please contact your Glean administrator to ensure the token has access to execute agents.`);
+      } else if (err.message.includes('AGENT_NOT_FOUND')) {
+        setError(`Agent not found: The specified Glean agent ID does not exist or is not accessible. This could be due to an incorrect agent ID or insufficient permissions.`);
+      } else if (err.message.includes('AGENT_API_FAILED')) {
+        setError(`Glean agent API failed: Unable to execute the pre-built agent. This could be due to API configuration issues or the agent being temporarily unavailable.`);
+      } else if (err.message.includes('timeout')) {
+        setError(`The Glean agent is taking longer than expected to respond. This might be due to network issues or the agent being busy.`);
+      } else if (err.message.includes('Failed to fetch')) {
+        setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
+      } else {
+        setError(`Error: ${err.message}`);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <Box padding="medium">
       <Text variant="h3">Strategic Account Plan</Text>
       
-      {!isGleanReady && (
+      {!result && !isLoading && !error && (
         <Box padding="small">
-          <Text>Loading Glean AI Agent...</Text>
-        </Box>
-      )}
-      
-      {isGleanReady && companyName && (
-        <Box padding="small">
-          <Text variant="small">
-            🤖 Glean AI Agent ready for {companyName}
-          </Text>
-          
+          <Text>Generate Strategic Account Plan for {companyName} using Glean AI Agent:</Text>
+
           <Box padding="small">
             <Text variant="small">
-              The agent will automatically start generating a strategic account plan. 
-              You can interact with it directly in the chat interface below.
+              🤖 Using Glean AI Agent to generate strategic insights
             </Text>
           </Box>
-          
-          {/* Glean Chat Container - following embed guidelines */}
-          <Box 
-            ref={gleanContainerRef}
-            style={{
-              position: 'relative',
-              display: 'block',
-              height: '600px',
-              width: '100%',
-              minHeight: '400px'
-            }}
-          />
+
+          <Button
+            variant="primary"
+            onClick={runStrategicAccountPlan}
+            disabled={isLoading}
+          >
+            Generate Plan
+          </Button>
         </Box>
       )}
-      
-      {isGleanReady && !companyName && (
+
+      {isLoading && (
         <Box padding="small">
-          <Text variant="error">Unable to load company information</Text>
+          <Text>🤖 Running Glean AI Agent to generate strategic plan...</Text>
+        </Box>
+      )}
+
+      {error && (
+        <Box padding="small">
+          <Text variant="error">Error: {error}</Text>
+          <Button
+            variant="secondary"
+            onClick={runStrategicAccountPlan}
+          >
+            Try Again
+          </Button>
+        </Box>
+      )}
+
+      {result && !result.error && (
+        <Box padding="small">
+          <Text variant="success">✅ Strategic Account Plan Generated!</Text>
+          <Text variant="small">Company: {result.metadata?.companyName || 'Unknown'}</Text>
+          {result.metadata?.source && (
+            <Text variant="small">Source: {result.metadata.source}</Text>
+          )}
+
+          {result.messages && Array.isArray(result.messages) && result.messages.map((message, index) => (
+            <Box key={index} padding="small">
+              <Text variant="small" fontWeight="bold">
+                {message.role === 'GLEAN_AI' ? 'AI Analysis:' : message.role}:
+              </Text>
+              {message.content && Array.isArray(message.content) && message.content.map((content, contentIndex) => (
+                <Text key={contentIndex} variant="small">
+                  {content.text}
+                </Text>
+              ))}
+            </Box>
+          ))}
+
+          <Button
+            variant="secondary"
+            onClick={runStrategicAccountPlan}
+          >
+            Generate New Plan
+          </Button>
         </Box>
       )}
     </Box>
