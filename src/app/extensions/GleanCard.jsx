@@ -28,116 +28,77 @@ const GleanCard = ({ context, actions }) => {
     try {
       console.log('Opening Glean agent modal for:', companyName);
 
-      // Create an HTML page that embeds the Glean agent
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Strategic Account Plan - ${companyName}</title>
-          <script defer src="https://app.glean.com/embedded-search-latest.min.js"></script>
-          <style>
-            body {
-              margin: 0;
-              padding: 20px;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: #f8f9fa;
-            }
-            .header {
-              background: white;
-              padding: 20px;
-              border-radius: 8px;
-              margin-bottom: 20px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .header h1 {
-              margin: 0 0 10px 0;
-              color: #2c3e50;
-              font-size: 24px;
-            }
-            .header p {
-              margin: 0;
-              color: #7f8c8d;
-              font-size: 14px;
-            }
-            #glean-app {
-              position: relative;
-              display: block;
-              height: 600px;
-              width: 100%;
-              background: white;
-              border-radius: 8px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .loading {
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              height: 100%;
-              color: #7f8c8d;
-            }
-            .error {
-              padding: 20px;
-              color: #e74c3c;
-              text-align: center;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Strategic Account Plan</h1>
-            <p>Generating strategic insights for <strong>${companyName}</strong> using Glean AI Agent</p>
-          </div>
-          
-          <div id="glean-app">
-            <div class="loading">Loading Glean Agent...</div>
-          </div>
+      // Create a simple HTML page that embeds the Glean agent
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Strategic Account Plan - ${companyName}</title>
+  <script src="https://app.glean.com/embedded-search-latest.min.js"></script>
+  <style>
+    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .header h1 { color: #333; margin: 0 0 10px 0; }
+    .header p { color: #666; margin: 0; }
+    #glean-app { height: 500px; border: 1px solid #ddd; border-radius: 4px; }
+    .loading { text-align: center; padding: 50px; color: #666; }
+    .error { color: #e74c3c; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Strategic Account Plan</h1>
+      <p>Generating insights for <strong>${companyName}</strong></p>
+    </div>
+    
+    <div id="glean-app">
+      <div class="loading">Loading Glean Agent...</div>
+    </div>
+  </div>
 
-          <script>
-            document.addEventListener('DOMContentLoaded', () => {
-              try {
-                // Check if GleanWebSDK is available
-                if (typeof GleanWebSDK !== 'undefined') {
-                  // Render the Glean agent
-                  GleanWebSDK.renderChat(
-                    document.getElementById('glean-app'),
-                    {
-                      agentId: "5057a8a588c649d6b1231d648a9167c8"
-                    }
-                  );
-                } else {
-                  // Fallback if SDK doesn't load
-                  document.getElementById('glean-app').innerHTML = 
-                    '<div class="error">Failed to load Glean Web SDK. Please refresh the page.</div>';
-                }
-              } catch (error) {
-                console.error('Error rendering Glean agent:', error);
-                document.getElementById('glean-app').innerHTML = 
-                  '<div class="error">Error loading Glean agent: ' + error.message + '</div>';
-              }
-            });
-          </script>
-        </body>
-        </html>
-      `;
+  <script>
+    // Wait for the page to load
+    window.addEventListener('load', function() {
+      try {
+        // Check if GleanWebSDK is available
+        if (typeof GleanWebSDK !== 'undefined') {
+          console.log('GleanWebSDK loaded, rendering agent...');
+          // Render the Glean agent
+          GleanWebSDK.renderChat(
+            document.getElementById('glean-app'),
+            {
+              agentId: "5057a8a588c649d6b1231d648a9167c8"
+            }
+          );
+        } else {
+          console.error('GleanWebSDK not available');
+          document.getElementById('glean-app').innerHTML = 
+            '<div class="error">Failed to load Glean Web SDK. Please check your internet connection.</div>';
+        }
+      } catch (error) {
+        console.error('Error rendering Glean agent:', error);
+        document.getElementById('glean-app').innerHTML = 
+          '<div class="error">Error loading Glean agent: ' + error.message + '</div>';
+      }
+    });
+  </script>
+</body>
+</html>`;
 
-      // Create a blob URL for the HTML content
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const blobUrl = URL.createObjectURL(blob);
+      // Create a data URL for the HTML content
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+
+      console.log('Opening iframe modal with data URL...');
 
       // Open the iframe modal with the Glean agent
       await actions.openIframeModal({
         title: `Strategic Account Plan - ${companyName}`,
-        url: blobUrl,
-        width: 800,
+        url: dataUrl,
+        width: 900,
         height: 700
       });
-
-      // Clean up the blob URL after a delay
-      setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-      }, 1000);
 
     } catch (err) {
       console.error('Error opening Glean agent modal:', err);
