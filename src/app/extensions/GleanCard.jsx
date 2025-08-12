@@ -335,4 +335,9 @@ const GleanCard = ({ context, actions }) => {
   );
 };
 
-export default GleanCard; 
+export default GleanCard;
+
+// Register the extension with HubSpot
+hubspot.extend(({ context, actions }) => (
+  <GleanCard context={context} actions={actions} />
+));
