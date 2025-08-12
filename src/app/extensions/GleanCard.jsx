@@ -27,24 +27,12 @@ const GleanCard = ({ context, actions }) => {
       // Construct the Glean URL with the agent and company name
       const gleanUrl = `https://trace3-be.glean.com/agents/5057a8a588c649d6b1231d648a9167c8?company=${encodeURIComponent(companyName)}`;
       
-      // Open modal with iframe
-      await hubspot.actions.openModal({
+      // Open iframe modal using the correct HubSpot API
+      await actions.openIframeModal({
         title: `Strategic Account Plan - ${companyName}`,
-        size: 'large',
-        content: (
-          <Box style={{ width: '100%', height: '600px' }}>
-            <iframe 
-              src={gleanUrl}
-              style={{ 
-                width: '100%', 
-                height: '100%', 
-                border: 'none',
-                borderRadius: '8px'
-              }}
-              title="Glean Strategic Account Plan Agent"
-            />
-          </Box>
-        )
+        url: gleanUrl,
+        width: 1200,
+        height: 800
       });
     } catch (error) {
       console.error('Error opening Glean modal:', error);
