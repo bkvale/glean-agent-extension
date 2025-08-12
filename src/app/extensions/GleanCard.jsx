@@ -40,7 +40,7 @@ const GleanCard = ({ context, actions }) => {
         companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
       }
 
-      console.log('Starting Glean knowledge search for:', companyName);
+      console.log('Starting Glean agent execution for:', companyName);
 
       const response = await hubspot.serverless('glean-proxy', {
         propertiesToSend: ['name'],
@@ -94,8 +94,8 @@ const GleanCard = ({ context, actions }) => {
             await savePlan(companyId, planContent, {
               timestamp: new Date().toISOString(),
               companyName,
-              searchResults: gleanData.metadata?.searchResults || 0,
-              requestId: gleanData.metadata?.requestId
+              source: gleanData.metadata?.source || 'unknown',
+              agentId: gleanData.metadata?.agentId
             });
           } catch (saveError) {
             console.warn('Failed to save plan:', saveError);
@@ -116,7 +116,7 @@ const GleanCard = ({ context, actions }) => {
       });
       
     } catch (err) {
-      console.error('Error running Glean search:', err);
+      console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
       console.error('Error stack:', err.stack);
 
@@ -125,7 +125,7 @@ const GleanCard = ({ context, actions }) => {
         const errorBody = err.message.replace('Serverless function failed: ', '');
         setError(errorBody);
       } else if (err.message.includes('timeout')) {
-        setError(`The Glean search is taking longer than expected to respond. This might be due to network issues or the search query being too complex.`);
+        setError(`The Glean agent is taking longer than expected to respond. This might be due to network issues or the agent being busy.`);
       } else if (err.message.includes('Failed to fetch')) {
         setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
       } else if (err.message.includes('Bearer token')) {
@@ -146,11 +146,11 @@ const GleanCard = ({ context, actions }) => {
 
       {!result && !isLoading && !error && (
         <Box padding="small">
-          <Text>Generate Strategic Account Plan for this company using Glean knowledge base search:</Text>
+          <Text>Generate Strategic Account Plan for this company using Glean AI Agent:</Text>
           
           <Box padding="small">
             <Text variant="small">
-              🔍 Using Glean search to find relevant company information
+              🤖 Using Glean AI Agent to generate strategic insights
             </Text>
           </Box>
           
@@ -166,7 +166,7 @@ const GleanCard = ({ context, actions }) => {
 
       {isLoading && (
         <Box padding="small">
-          <Text>🔍 Searching Glean knowledge base for company information...</Text>
+          <Text>🤖 Running Glean AI Agent to generate strategic plan...</Text>
         </Box>
       )}
 
@@ -186,8 +186,8 @@ const GleanCard = ({ context, actions }) => {
         <Box padding="small">
           <Text variant="success">✅ Strategic Account Plan Generated!</Text>
           <Text variant="small">Company: {result.metadata?.companyName || 'Unknown'}</Text>
-          {result.metadata?.searchResults !== undefined && (
-            <Text variant="small">Knowledge base results: {result.metadata.searchResults} documents found</Text>
+          {result.metadata?.source && (
+            <Text variant="small">Source: {result.metadata.source}</Text>
           )}
           
           {result.messages && Array.isArray(result.messages) && result.messages.map((message, index) => (

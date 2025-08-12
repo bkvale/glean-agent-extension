@@ -5,6 +5,7 @@ const https = require('https');
 const CONFIG = {
   GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
   GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
+  GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s for HubSpot limits
   MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1,
@@ -90,14 +91,93 @@ async function makeGleanRequest(options, postData = null) {
   });
 }
 
-// Search Glean knowledge base for company information
-async function searchGleanKnowledge(companyName) {
-  log.start('search_glean_knowledge', { companyName });
+// Execute a pre-built Glean agent
+async function executeGleanAgent(companyName) {
+  log.start('execute_glean_agent', { companyName, agentId: CONFIG.GLEAN_AGENT_ID });
+  
+  // Based on the Agents API documentation, use the correct endpoint and format
+  const postData = JSON.stringify({
+    query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+  });
+
+  // Try the wait endpoint first (blocking response)
+  try {
+    const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`, // Use the correct endpoint format
+      method: 'POST',
+      timeout: CONFIG.TIMEOUT_MS,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    log.http('http_request_outbound', { 
+      url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
+      method: 'POST',
+      timeoutMs: CONFIG.TIMEOUT_MS
+    });
+
+    return await makeGleanRequest(options, postData);
+  } catch (error) {
+    log.error('wait_endpoint_failed', { error: error.message });
+    
+    // Fallback to streaming endpoint
+    try {
+      log.start('trying_streaming_endpoint');
+      
+      const options = {
+        hostname: CONFIG.GLEAN_BASE_URL,
+        port: 443,
+        path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`, // Try streaming endpoint
+        method: 'POST',
+        timeout: CONFIG.TIMEOUT_MS,
+        headers: {
+          'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      log.http('http_request_outbound', { 
+        url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
+        method: 'POST',
+        timeoutMs: CONFIG.TIMEOUT_MS
+      });
+
+      return await makeGleanRequest(options, postData);
+    } catch (streamError) {
+      log.error('streaming_endpoint_failed', { error: streamError.message });
+      throw new Error(`Both agent endpoints failed. Wait: ${error.message}, Stream: ${streamError.message}`);
+    }
+  }
+}
+
+// Fallback: Use chat API with strategic planning prompt
+async function runGleanChat(companyName) {
+  log.start('run_glean_chat', { companyName });
   
   const postData = JSON.stringify({
-    query: `strategic account plan ${companyName} company information business analysis`,
-    pageSize: 10,
-    requestOptions: {
+    messages: [
+      {
+        role: "user",
+        content: `You are a strategic account planning expert. Generate a comprehensive strategic account plan for ${companyName}. 
+
+Please include:
+1. Company Overview and Industry Analysis
+2. Key Business Insights and Opportunities  
+3. Strategic Recommendations
+4. Risk Assessment
+5. Next Steps and Action Items
+6. Account Status and Priority Level
+
+Format the response as a structured strategic account plan with clear sections and actionable recommendations.`
+      }
+    ],
+    options: {
       timeoutMillis: CONFIG.TIMEOUT_MS
     }
   });
@@ -105,7 +185,7 @@ async function searchGleanKnowledge(companyName) {
   const options = {
     hostname: CONFIG.GLEAN_BASE_URL,
     port: 443,
-    path: '/rest/api/v1/search', // Use the correct search endpoint
+    path: '/rest/api/v1/chat',
     method: 'POST',
     timeout: CONFIG.TIMEOUT_MS,
     headers: {
@@ -116,78 +196,12 @@ async function searchGleanKnowledge(companyName) {
   };
 
   log.http('http_request_outbound', { 
-    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/search`,
+    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/chat`,
     method: 'POST',
     timeoutMs: CONFIG.TIMEOUT_MS
   });
 
   return makeGleanRequest(options, postData);
-}
-
-// Generate strategic account plan from search results
-function generateStrategicPlan(companyName, searchResults) {
-  log.start('generate_strategic_plan', { companyName, resultCount: searchResults?.results?.length || 0 });
-  
-  if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
-    return {
-      messages: [{
-        role: 'GLEAN_AI',
-        content: [{
-          text: `No specific information found for ${companyName} in our knowledge base. This could mean:\n\n1. The company may not be in our current knowledge base\n2. We may need to gather more information about this company\n3. The company might be using a different name or spelling\n\nTo generate a strategic account plan, we would typically need:\n- Company overview and industry\n- Current relationship status\n- Key stakeholders and decision makers\n- Business challenges and opportunities\n- Competitive landscape\n- Revenue potential and growth opportunities`
-        }]
-      }],
-      metadata: {
-        companyName,
-        timestamp: new Date().toISOString(),
-        searchResults: 0,
-        generated: true
-      }
-    };
-  }
-
-  // Extract relevant information from search results
-  const relevantDocs = searchResults.results.slice(0, 5); // Top 5 results
-  const docSummaries = relevantDocs.map((doc, index) => {
-    return `${index + 1}. ${doc.title || 'Untitled Document'}\n   ${doc.snippet || 'No snippet available'}`;
-  }).join('\n\n');
-
-  const strategicPlan = `Based on our knowledge base search for ${companyName}, here's a strategic account plan:
-
-## Company Overview
-${relevantDocs.length > 0 ? 'Information found in our knowledge base suggests this company is active in our ecosystem.' : 'Limited information available in our knowledge base.'}
-
-## Key Insights from Knowledge Base
-${docSummaries}
-
-## Strategic Recommendations
-1. **Engagement Strategy**: ${relevantDocs.length > 0 ? 'Leverage existing relationships and knowledge' : 'Establish initial contact and gather more information'}
-2. **Opportunity Areas**: ${relevantDocs.length > 0 ? 'Build on existing interactions' : 'Identify potential partnership opportunities'}
-3. **Risk Assessment**: ${relevantDocs.length > 0 ? 'Monitor existing relationship health' : 'Conduct thorough due diligence'}
-
-## Next Steps
-- Schedule discovery call to understand current needs
-- Review any existing contracts or agreements
-- Identify key stakeholders and decision makers
-- Develop tailored value proposition
-
-## Knowledge Base Coverage
-Found ${relevantDocs.length} relevant documents in our knowledge base. ${relevantDocs.length > 0 ? 'This indicates some existing relationship or interaction history.' : 'This suggests we may need to gather more information about this company.'}`;
-
-  return {
-    messages: [{
-      role: 'GLEAN_AI',
-      content: [{
-        text: strategicPlan
-      }]
-    }],
-    metadata: {
-      companyName,
-      timestamp: new Date().toISOString(),
-      searchResults: relevantDocs.length,
-      generated: true,
-      requestId: searchResults.requestID
-    }
-  };
 }
 
 // Main exports.main function
@@ -200,6 +214,7 @@ exports.main = async (context = {}) => {
     config: {
       instance: CONFIG.GLEAN_INSTANCE,
       baseUrl: CONFIG.GLEAN_BASE_URL,
+      agentId: CONFIG.GLEAN_AGENT_ID,
       timeoutMs: CONFIG.TIMEOUT_MS,
       maxRetries: CONFIG.MAX_RETRIES,
       testMode: CONFIG.TEST_MODE
@@ -232,43 +247,105 @@ exports.main = async (context = {}) => {
       };
     }
 
-    // Search Glean knowledge base
-    log.start('search_knowledge_base', { companyName });
+    // Try to execute the Glean agent first
+    log.start('attempt_agent_execution', { companyName });
     
     try {
-      const searchResults = await searchGleanKnowledge(companyName);
+      const agentResult = await executeGleanAgent(companyName);
       
-      // Generate strategic plan from search results
-      const strategicPlan = generateStrategicPlan(companyName, searchResults);
-      
-      log.success('plan_generated', { 
+      log.success('agent_execution_success', { 
         companyName, 
-        searchResults: searchResults?.results?.length || 0,
-        planLength: strategicPlan.messages[0].content[0].text.length
+        resultType: typeof agentResult,
+        hasMessages: !!agentResult.messages
       });
       
       return {
         statusCode: 200,
-        body: strategicPlan
-      };
-      
-    } catch (error) {
-      log.error('search_error', { companyName, error: error.message });
-      
-      // If search fails, return a basic plan
-      const fallbackPlan = generateStrategicPlan(companyName, null);
-      
-      return {
-        statusCode: 200,
         body: {
-          ...fallbackPlan,
+          messages: agentResult.messages || [{
+            role: 'GLEAN_AI',
+            content: [{
+              text: agentResult.response || agentResult.content || agentResult.result || JSON.stringify(agentResult)
+            }]
+          }],
           metadata: {
-            ...fallbackPlan.metadata,
-            error: `Search failed: ${error.message}`,
-            fallback: true
+            companyName,
+            timestamp: new Date().toISOString(),
+            source: 'glean_agent',
+            agentId: CONFIG.GLEAN_AGENT_ID
           }
         }
       };
+      
+    } catch (agentError) {
+      log.error('agent_execution_failed', { companyName, error: agentError.message });
+      
+      // Fallback to chat API
+      log.start('fallback_to_chat', { companyName });
+      
+      try {
+        const chatResult = await runGleanChat(companyName);
+        
+        log.success('chat_fallback_success', { companyName });
+        
+        return {
+          statusCode: 200,
+          body: {
+            messages: [{
+              role: 'GLEAN_AI',
+              content: [{
+                text: chatResult.response || chatResult.content || chatResult.result || JSON.stringify(chatResult)
+              }]
+            }],
+            metadata: {
+              companyName,
+              timestamp: new Date().toISOString(),
+              source: 'glean_chat_fallback',
+              note: 'Agent API failed, used chat fallback'
+            }
+          }
+        };
+        
+      } catch (chatError) {
+        log.error('chat_fallback_failed', { companyName, error: chatError.message });
+        
+        // Final fallback: return a basic plan
+        return {
+          statusCode: 200,
+          body: {
+            messages: [{
+              role: 'GLEAN_AI',
+              content: [{
+                text: `## Strategic Account Plan: ${companyName}
+
+### 🔍 Status
+Unable to connect to Glean agent or chat API. This could be due to:
+- API endpoint configuration issues
+- Authentication problems  
+- Network connectivity issues
+
+### 📋 Recommended Next Steps
+1. Verify Glean API configuration
+2. Check API token permissions
+3. Contact Glean administrator for correct endpoints
+4. Test with a different company name
+
+### 💡 Manual Process
+For now, consider manually researching ${companyName} and creating a strategic account plan using your existing processes.
+
+---
+*Generated as fallback due to API connection issues.*`
+              }]
+            }],
+            metadata: {
+              companyName,
+              timestamp: new Date().toISOString(),
+              source: 'fallback',
+              errors: [agentError.message, chatError.message]
+            }
+          }
+        };
+      }
     }
 
   } catch (error) {
