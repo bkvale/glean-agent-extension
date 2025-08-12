@@ -26,8 +26,64 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [pollingCount, setPollingCount] = useState(0);
   // Always use async mode since Glean agent is slow
   const asyncMode = true;
+
+  // Poll for completion of async job
+  const pollForCompletion = async (companyName, maxAttempts = 30) => {
+    setIsPolling(true);
+    setPollingCount(0);
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      setPollingCount(attempt);
+      
+      try {
+        console.log(`Polling attempt ${attempt}/${maxAttempts} for completion...`);
+        
+        const response = await hubspot.serverless('glean-proxy', {
+          propertiesToSend: ['name'],
+          parameters: {
+            companyName: companyName,
+            checkStatus: true,
+            attempt: attempt
+          }
+        });
+        
+        console.log(`Poll response ${attempt}:`, response);
+        
+        if (response?.statusCode === 200 && response?.body?.messages) {
+          // Job completed successfully
+          console.log('Job completed!', response.body);
+          setResult(response.body);
+          setIsPolling(false);
+          return;
+        } else if (response?.statusCode === 202) {
+          // Still running, continue polling
+          console.log('Job still running, continuing to poll...');
+          await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+        } else {
+          // Error or unexpected response
+          console.error('Unexpected poll response:', response);
+          setError('Error checking job status. Please try again.');
+          setIsPolling(false);
+          return;
+        }
+      } catch (error) {
+        console.error(`Poll attempt ${attempt} failed:`, error);
+        if (attempt === maxAttempts) {
+          setError('Job timed out after 5 minutes. Please try again.');
+          setIsPolling(false);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+      }
+    }
+    
+    setError('Job timed out after 5 minutes. Please try again.');
+    setIsPolling(false);
+  };
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -98,6 +154,9 @@ const GleanCard = ({ context, actions }) => {
           message: gleanData.message || 'Generation started',
           companyName: gleanData.companyName
         });
+        
+        // Start polling for completion
+        pollForCompletion(companyName);
         return;
       }
 
@@ -191,6 +250,13 @@ const GleanCard = ({ context, actions }) => {
       {isLoading && (
         <Box padding="small">
           <Text>⏳ Generating Strategic Account Plan...</Text>
+        </Box>
+      )}
+
+      {isPolling && (
+        <Box padding="small">
+          <Text>🔄 Checking for completion... (Attempt {pollingCount}/30)</Text>
+          <Text variant="small">This may take 1-2 minutes. Checking every 10 seconds.</Text>
         </Box>
       )}
 

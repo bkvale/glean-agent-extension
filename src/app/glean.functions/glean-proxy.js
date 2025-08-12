@@ -177,7 +177,7 @@ exports.main = async (context = {}) => {
   });
   
   try {
-    const { companyName, asyncMode } = context.parameters || {};
+    const { companyName, asyncMode, checkStatus, attempt } = context.parameters || {};
     
     if (!companyName) {
       log.error('validation_error', { error: 'Company name is required', received: context });
@@ -200,6 +200,59 @@ exports.main = async (context = {}) => {
           timestamp: new Date().toISOString()
         }
       };
+    }
+    
+    // Handle status checking for async jobs
+    if (checkStatus) {
+      log.start('status_check', { companyName, attempt });
+      
+      try {
+        // Try to get the result from the agent
+        const data = await makeGleanRequest(companyName);
+        
+        if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          // Job completed successfully
+          log.success('status_check_success', { companyName, attempt });
+          return {
+            statusCode: 200,
+            body: {
+              ...data,
+              metadata: {
+                timestamp: new Date().toISOString(),
+                companyName,
+                statusCheck: true,
+                attempt
+              }
+            }
+          };
+        } else {
+          // Job still running or no results yet
+          log.start('status_check_running', { companyName, attempt });
+          return {
+            statusCode: 202,
+            body: {
+              status: 'running',
+              message: 'Job is still running',
+              companyName,
+              timestamp: new Date().toISOString(),
+              attempt
+            }
+          };
+        }
+      } catch (error) {
+        log.error('status_check_error', error);
+        return {
+          statusCode: 202,
+          body: {
+            status: 'running',
+            message: 'Job is still running',
+            companyName,
+            timestamp: new Date().toISOString(),
+            attempt,
+            error: error.message
+          }
+        };
+      }
     }
     
     // Check if we should use async flow for long-running agents
