@@ -280,15 +280,15 @@ const GleanCard = ({ context, actions }) => {
                           </Box>
                         )}
 
-                        {diagnostics.tests.chatApi && (
+                        {diagnostics.tests.agentExecution && (
                           <Box padding="small">
                             <Text variant="small">
-                              {diagnostics.tests.chatApi.success ? '✅' : '❌'} Chat API: 
-                              {diagnostics.tests.chatApi.message}
+                              {diagnostics.tests.agentExecution.success ? '✅' : '❌'} Agent Execution: 
+                              {diagnostics.tests.agentExecution.message}
                             </Text>
-                            {!diagnostics.tests.chatApi.success && (
+                            {!diagnostics.tests.agentExecution.success && (
                               <Text variant="error">
-                                Error: {diagnostics.tests.chatApi.error}
+                                Error: {diagnostics.tests.agentExecution.error}
                               </Text>
                             )}
                           </Box>

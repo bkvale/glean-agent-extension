@@ -254,8 +254,8 @@ async function testGleanConfiguration() {
     const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
       port: 443,
-      path: '/rest/api/v1/agents',
-      method: 'GET',
+      path: '/rest/api/v1/agents/search',
+      method: 'POST',
       timeout: 5000,
       headers: {
         'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
@@ -263,8 +263,12 @@ async function testGleanConfiguration() {
       }
     };
 
+    const postData = JSON.stringify({
+      query: "test"
+    });
+
     log.start('testing_basic_connectivity');
-    const agentsResponse = await makeGleanRequest(options);
+    const agentsResponse = await makeGleanRequest(options, postData);
     diagnostics.tests.basicConnectivity = {
       success: true,
       message: 'Successfully connected to Glean API',
@@ -312,23 +316,18 @@ async function testGleanConfiguration() {
     log.error('agent_existence_test_failed', error);
   }
 
-  // Test 3: Test chat API as fallback
+  // Test 3: Test agent execution capability
   try {
     const postData = JSON.stringify({
-      messages: [
-        {
-          role: "user",
-          content: "Hello, this is a test message."
-        }
-      ]
+      query: "Test query for agent execution"
     });
 
     const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
       port: 443,
-      path: '/rest/api/v1/chat',
+      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
       method: 'POST',
-      timeout: 5000,
+      timeout: 3000, // Short timeout for test
       headers: {
         'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
         'Content-Type': 'application/json',
@@ -336,21 +335,21 @@ async function testGleanConfiguration() {
       }
     };
 
-    log.start('testing_chat_api');
-    const chatResponse = await makeGleanRequest(options, postData);
-    diagnostics.tests.chatApi = {
+    log.start('testing_agent_execution');
+    const agentResponse = await makeGleanRequest(options, postData);
+    diagnostics.tests.agentExecution = {
       success: true,
-      message: 'Chat API is working',
-      hasResponse: !!chatResponse.messages
+      message: 'Agent execution is working',
+      hasResponse: !!agentResponse.messages || !!agentResponse.response
     };
-    log.success('chat_api_test_passed');
+    log.success('agent_execution_test_passed');
   } catch (error) {
-    diagnostics.tests.chatApi = {
+    diagnostics.tests.agentExecution = {
       success: false,
       error: error.message,
-      message: 'Chat API failed'
+      message: 'Agent execution failed (this is expected if agent takes too long)'
     };
-    log.error('chat_api_test_failed', error);
+    log.error('agent_execution_test_failed', error);
   }
 
   return diagnostics;
@@ -446,72 +445,41 @@ exports.main = async (context = {}) => {
     } catch (agentError) {
       log.error('agent_execution_failed', { companyName, error: agentError.message });
       
-      // Fallback to chat API
-      log.start('fallback_to_chat', { companyName });
-      
-      try {
-        const chatResult = await runGleanChat(companyName);
-        
-        log.success('chat_fallback_success', { companyName });
-        
-        return {
-          statusCode: 200,
-          body: {
-            messages: [{
-              role: 'GLEAN_AI',
-              content: [{
-                text: chatResult.response || chatResult.content || chatResult.result || JSON.stringify(chatResult)
-              }]
-            }],
-            metadata: {
-              companyName,
-              timestamp: new Date().toISOString(),
-              source: 'glean_chat_fallback',
-              note: 'Agent API failed, used chat fallback'
-            }
-          }
-        };
-        
-      } catch (chatError) {
-        log.error('chat_fallback_failed', { companyName, error: chatError.message });
-        
-        // Final fallback: return a basic plan
-        return {
-          statusCode: 200,
-          body: {
-            messages: [{
-              role: 'GLEAN_AI',
-              content: [{
-                text: `## Strategic Account Plan: ${companyName}
+                        // Fallback: return a basic plan since chat API is not available
+                  log.start('fallback_to_static_plan', { companyName });
+
+                  return {
+                    statusCode: 200,
+                    body: {
+                      messages: [{
+                        role: 'GLEAN_AI',
+                        content: [{
+                          text: `## Strategic Account Plan: ${companyName}
 
 ### 🔍 Status
-Unable to connect to Glean agent or chat API. This could be due to:
-- API endpoint configuration issues
-- Authentication problems  
-- Network connectivity issues
+Glean agent execution failed (likely due to timeout). Your API token has access to the agent but not to the chat API fallback.
 
 ### 📋 Recommended Next Steps
-1. Verify Glean API configuration
-2. Check API token permissions
-3. Contact Glean administrator for correct endpoints
-4. Test with a different company name
+1. The agent "T3 Marketing: Strategic Account Plan Agent" exists and is accessible
+2. Consider increasing the timeout or using a different approach for long-running agents
+3. Contact your Glean administrator to add CHAT scope to your API token for better fallback options
 
 ### 💡 Manual Process
 For now, consider manually researching ${companyName} and creating a strategic account plan using your existing processes.
 
 ---
-*Generated as fallback due to API connection issues.*`
-              }]
-            }],
-            metadata: {
-              companyName,
-              timestamp: new Date().toISOString(),
-              source: 'fallback',
-              errors: [agentError.message, chatError.message]
-            }
-          }
-        };
-      }
+*Generated as fallback due to agent execution timeout.*`
+                        }]
+                      }],
+                      metadata: {
+                        companyName,
+                        timestamp: new Date().toISOString(),
+                        source: 'fallback_no_chat',
+                        errors: [agentError.message],
+                        note: 'Agent exists but execution timed out, chat API not available'
+                      }
+                    }
+                  };
     }
 
   } catch (error) {
