@@ -1,7 +1,10 @@
 // HubSpot Serverless Function to proxy Glean API requests using official SDK
+// ⚠️ SECURITY NOTE: This contains hardcoded credentials for testing purposes only.
+// TODO: Replace with environment variables before production deployment.
 const { Glean } = require('@gleanwork/api-client');
 
-// Configuration with environment variable fallbacks
+// Configuration with hardcoded values for testing
+// TODO: Replace with environment variables for production
 const CONFIG = {
   GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
   GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
@@ -98,264 +101,137 @@ async function executeGleanAgent(companyName) {
   }
 }
 
-// Test Glean configuration using the official SDK
+// Test Glean API configuration and connectivity
 async function testGleanConfiguration() {
-  log.start('test_glean_configuration');
+  log.start('test_glean_configuration', {
+    instance: CONFIG.GLEAN_INSTANCE,
+    baseUrl: CONFIG.GLEAN_BASE_URL,
+    agentId: CONFIG.GLEAN_AGENT_ID,
+    hasToken: !!CONFIG.GLEAN_API_TOKEN
+  });
 
-  const diagnostics = {
-    config: {
-      instance: CONFIG.GLEAN_INSTANCE,
-      baseUrl: CONFIG.GLEAN_BASE_URL,
-      agentId: CONFIG.GLEAN_AGENT_ID,
-      hasToken: !!CONFIG.GLEAN_API_TOKEN
-    },
-    tests: {}
+  const results = {
+    basicConnectivity: { status: 'pending', message: '', data: null },
+    agentExists: { status: 'pending', message: '', data: null },
+    agentExecution: { status: 'pending', message: '', data: null }
   };
 
   try {
-    // Test 1: Basic connectivity and agent search
-    log.start('testing_basic_connectivity');
-    const agentsResult = await glean.client.agents.list({
-      query: "Strategic Account Plan"
-    });
-    
-    diagnostics.tests.basicConnectivity = {
-      success: true,
-      message: 'Successfully connected to Glean API',
-      agentsCount: agentsResult.agents?.length || 0
-    };
-
-    // Test 2: Check if our specific agent exists
-    log.start('testing_agent_exists');
+    // Test 1: Basic connectivity - list agents
     try {
-      const agentResult = await glean.client.agents.retrieve({
-        agentId: CONFIG.GLEAN_AGENT_ID
-      });
-      
-      diagnostics.tests.agentExists = {
-        success: true,
-        message: 'Agent found and accessible',
-        agentName: agentResult.name || 'Unknown'
+      const agentsResponse = await glean.client.agents.list();
+      results.basicConnectivity = {
+        status: 'success',
+        message: `Successfully connected to Glean API (${agentsResponse.agents?.length || 0} agents found)`,
+        data: agentsResponse.agents?.length || 0
       };
     } catch (error) {
-      diagnostics.tests.agentExists = {
-        success: false,
-        message: 'Agent not found or not accessible',
-        error: error.message
+      results.basicConnectivity = {
+        status: 'error',
+        message: `Failed to connect to Glean API: ${error.message}`,
+        data: null
       };
     }
 
-    // Test 3: Try a simple agent execution
-    log.start('testing_agent_execution');
+    // Test 2: Agent exists and is accessible
+    try {
+      const agentResponse = await glean.client.agents.retrieve({ agentId: CONFIG.GLEAN_AGENT_ID });
+      results.agentExists = {
+        status: 'success',
+        message: `Agent found and accessible (${agentResponse.name})`,
+        data: agentResponse.name
+      };
+    } catch (error) {
+      results.agentExists = {
+        status: 'error',
+        message: `Agent not found or not accessible: ${error.message}`,
+        data: null
+      };
+    }
+
+    // Test 3: Direct agent execution test (will likely timeout)
     try {
       const testResult = await glean.client.agents.run({
         agentId: CONFIG.GLEAN_AGENT_ID,
-        input: {
-          "Company Name": "Test Company"
-        }
+        input: { "Company Name": "Configuration Test" }
       });
-      
-      diagnostics.tests.agentExecution = {
-        success: true,
-        message: 'Agent execution successful',
-        hasMessages: !!testResult.messages,
-        messageCount: testResult.messages?.length || 0
+      results.agentExecution = {
+        status: 'success',
+        message: 'Agent execution test successful',
+        data: testResult
       };
     } catch (error) {
-      diagnostics.tests.agentExecution = {
-        success: false,
-        message: 'Agent execution failed (this is expected if agent takes too long)',
-        error: error.message
-      };
+      if (error.message.includes('timeout') || error.statusCode === 408) {
+        results.agentExecution = {
+          status: 'timeout',
+          message: 'Agent execution test timed out (expected for long-running agents)',
+          data: null
+        };
+      } else {
+        results.agentExecution = {
+          status: 'error',
+          message: `Agent execution test failed: ${error.message}`,
+          data: null
+        };
+      }
     }
+
+    return results;
 
   } catch (error) {
-    log.error('configuration_test_failed', error);
-    diagnostics.tests.basicConnectivity = {
-      success: false,
-      message: 'Failed to connect to Glean API',
-      error: error.message
-    };
+    log.error('test_configuration_failed', error);
+    throw new Error(`Configuration test failed: ${error.message}`);
   }
-
-  return diagnostics;
 }
 
-// Main exports.main function
-exports.main = async (context = {}) => {
-  log.start('function_entry', {
-    contextKeys: Object.keys(context),
-    hasParameters: !!context.parameters,
-    config: {
-      instance: CONFIG.GLEAN_INSTANCE,
-      baseUrl: CONFIG.GLEAN_BASE_URL,
-      agentId: CONFIG.GLEAN_AGENT_ID,
-      timeoutMs: CONFIG.TIMEOUT_MS,
-      maxRetries: CONFIG.MAX_RETRIES,
-      testMode: CONFIG.TEST_MODE
-    }
+// Main serverless function handler
+exports.main = async (context = {}, sendResponse) => {
+  log.start('serverless_function_called', { 
+    action: context.paramsToSend?.action,
+    companyName: context.paramsToSend?.companyName,
+    testMode: context.paramsToSend?.testMode
   });
 
   try {
-    const { companyName, runDiagnostics, testAgentExecution } = context.parameters || {};
+    const { action, companyName, testMode } = context.paramsToSend || {};
 
-    // Run diagnostics if requested
-    if (runDiagnostics === 'true' || runDiagnostics === true) {
-      log.start('running_diagnostics');
-      const diagnostics = await testGleanConfiguration();
+    // Handle test mode
+    if (action === 'test' || testMode) {
+      const testResults = await testGleanConfiguration();
       
-      return {
+      sendResponse({
         statusCode: 200,
         body: {
-          diagnostics,
-          message: 'Glean API diagnostics completed'
-        }
-      };
-    }
-
-    // Test agent execution directly if requested
-    if (testAgentExecution === 'true' || testAgentExecution === true) {
-      log.start('testing_agent_execution_directly');
-      
-      try {
-        const result = await executeGleanAgent(companyName || 'Test Company');
-        
-        return {
-          statusCode: 200,
-          body: {
-            messages: result.messages || [{
-              role: 'GLEAN_AI',
-              content: [{
-                text: 'Agent execution test completed successfully'
-              }]
-            }],
-            metadata: {
-              companyName: companyName || 'Test Company',
-              timestamp: new Date().toISOString(),
-              source: 'direct_agent_test',
-              agentId: CONFIG.GLEAN_AGENT_ID
-            }
-          }
-        };
-      } catch (error) {
-        log.error('direct_agent_test_failed', error);
-        
-        return {
-          statusCode: 500,
-          body: {
-            error: `Direct agent test failed: ${error.message}`,
-            timestamp: new Date().toISOString()
-          }
-        };
-      }
-    }
-
-    if (!CONFIG.GLEAN_API_TOKEN) {
-      log.error('missing_api_token');
-      return {
-        statusCode: 500,
-        body: {
-          error: 'Glean API token not configured',
+          success: true,
+          message: 'Glean API configuration test completed',
+          results: testResults,
           timestamp: new Date().toISOString()
         }
-      };
-    }
-
-    if (!companyName) {
-      log.error('missing_company_name', { context });
-      return {
-        statusCode: 400,
-        body: {
-          error: 'Missing required parameter: companyName',
-          received: context,
-          timestamp: new Date().toISOString()
-        }
-      };
-    }
-
-    // Try to execute the Glean agent
-    log.start('attempt_agent_execution', { companyName });
-    
-    try {
-      const agentResult = await executeGleanAgent(companyName);
-      
-      log.success('agent_execution_success', { 
-        companyName, 
-        resultType: typeof agentResult,
-        hasMessages: !!agentResult.messages
       });
-      
-      return {
-        statusCode: 200,
-        body: {
-          messages: agentResult.messages || [{
-            role: 'GLEAN_AI',
-            content: [{
-              text: 'Agent execution completed but no messages returned'
-            }]
-          }],
-          metadata: {
-            companyName,
-            timestamp: new Date().toISOString(),
-            source: 'glean_agent',
-            agentId: CONFIG.GLEAN_AGENT_ID
-          }
-        }
-      };
-      
-    } catch (agentError) {
-      log.error('agent_execution_failed', { companyName, error: agentError.message });
-      
-      // Return a fallback response
-      return {
-        statusCode: 200,
-        body: {
-          messages: [{
-            role: 'GLEAN_AI',
-            content: [{
-              text: `## Strategic Account Plan: ${companyName}
-
-### 🔍 Status
-Glean agent execution failed: ${agentError.message}
-
-### 📋 Recommended Next Steps
-1. Check if the agent "T3 Marketing: Strategic Account Plan Agent" is accessible
-2. Verify API token has the correct permissions
-3. Consider the agent execution time (may exceed HubSpot timeout limits)
-
-### 💡 Manual Process
-For now, consider manually researching ${companyName} and creating a strategic account plan using your existing processes.
-
----
-*Generated as fallback due to agent execution error.*`
-            }]
-          }],
-          metadata: {
-            companyName,
-            timestamp: new Date().toISOString(),
-            source: 'fallback_error',
-            errors: [agentError.message],
-            note: 'Agent execution failed, showing fallback message'
-          }
-        }
-      };
+      return;
     }
 
-  } catch (error) {
-    log.error('function_error', {
-      error: error.message,
-      stack: error.stack,
-      errorType: error.constructor.name,
-      context: context
+    // Handle agent execution
+    if (!companyName) {
+      throw new Error('Company name is required for agent execution');
+    }
+
+    const result = await executeGleanAgent(companyName);
+    
+    sendResponse({
+      statusCode: 200,
+      body: result
     });
 
-    return {
+  } catch (error) {
+    log.error('serverless_function_error', error);
+    
+    sendResponse({
       statusCode: 500,
       body: {
-        error: `Function error: ${error.message}`,
-        timestamp: new Date().toISOString(),
-        errorType: error.constructor.name
+        error: error.message,
+        timestamp: new Date().toISOString()
       }
-    };
+    });
   }
 }; 

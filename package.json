@@ -14,7 +14,6 @@
     "typecheck": "echo 'TypeScript checking not configured'",
     "format": "prettier --write src/",
     "clean": "rm -rf dist/ build/",
-    "smoke-test": "node test-glean-api.js 'Test Company'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

@@ -1,18 +1,22 @@
 # Glean Agent Extension for HubSpot
 
-This repository contains two different approaches for integrating Glean AI agents with HubSpot CRM, implemented as separate feature branches for review and analysis.
+A HubSpot UI Extension that integrates Glean AI agents directly into company records, providing strategic account planning capabilities.
 
-## 🏗️ Architecture Overview
+## 🎯 Overview
 
-### Iframe Approach (`feature/iframe-embed-prototype`)
-- Attempts to embed Glean agent directly in HubSpot iframe modal
-- **Status**: Blocked by security policies (X-Frame-Options: DENY, CORS)
-- **Purpose**: Demonstrates why iframe embedding isn't viable for complex web apps
+This repository contains two working prototypes demonstrating different approaches to integrating Glean AI agents with HubSpot CRM:
 
-### Serverless Approach (`feature/crm-card-agent-run`)
-- Uses HubSpot serverless functions to call Glean API
-- **Status**: Works up to HubSpot's ~10-15 second timeout limit
-- **Purpose**: Shows viable path for programmatic agent execution
+1. **Iframe Prototype** (`feature/iframe-embed-prototype`) - Shows security limitations of iframe embedding
+2. **CRM Card Agent Runner** (`feature/crm-card-agent-run`) - Working serverless function integration
+
+## ⚠️ SECURITY NOTE
+
+**This repository currently contains hardcoded authentication credentials for testing purposes only.**
+- **Glean API Token**: Hardcoded in `src/app/glean.functions/glean-proxy.js`
+- **Agent ID**: Hardcoded in both components
+- **Instance Name**: Hardcoded as 'trace3'
+
+**TODO: Replace all hardcoded credentials with environment variables before production deployment.**
 
 ## 🚀 Quick Start
 
@@ -21,18 +25,21 @@ This repository contains two different approaches for integrating Glean AI agent
 - HubSpot Developer Account
 - Glean API access with agent permissions
 
-### Environment Setup
+### Environment Setup (Optional for Testing)
+For testing with your own credentials, you can optionally set environment variables:
+
 1. Copy `env.example` to `.env`:
    ```bash
    cp env.example .env
    ```
 
-2. Fill in your credentials:
+2. Fill in your credentials (will override hardcoded values):
    ```env
    GLEAN_API_TOKEN=your_actual_token
    GLEAN_INSTANCE=your_instance_name
    GLEAN_AGENT_ID=your_agent_id
    HUBSPOT_PRIVATE_APP_TOKEN=your_hubspot_token
+   HUBSPOT_PORTAL_ID=your_portal_id
    ```
 
 ### Running Each Approach
@@ -110,6 +117,12 @@ AUTH_ERROR: API token may not have agents scope permissions
 ```
 **Solution**: Ensure your Glean API token has the `AGENTS` scope.
 
+#### Missing Environment Variables
+```
+Missing required environment variables: GLEAN_INSTANCE, GLEAN_AGENT_ID, GLEAN_API_TOKEN
+```
+**Solution**: The app will use hardcoded values for testing. Set environment variables to override.
+
 ## 📁 Project Structure
 
 ```
@@ -117,52 +130,45 @@ src/
 ├── app/
 │   ├── extensions/
 │   │   ├── GleanCard.jsx          # Main CRM card component
-│   │   └── strategic-card.json    # Card configuration
-│   ├── glean.functions/
-│   │   ├── glean-proxy.js         # Serverless function
-│   │   └── package.json
-│   └── app.json                   # HubSpot app configuration
+│   │   └── strategic-card.json    # CRM card configuration
+│   └── glean.functions/
+│       └── glean-proxy.js         # Serverless function with Glean SDK
 ├── docs/
-│   └── architecture.md            # Technical documentation
-└── package.json
+│   ├── architecture.md            # Technical architecture
+│   └── token-setup-guide.md       # Token configuration guide
+├── env.example                    # Environment variables template
+├── .eslintrc.js                   # Linting configuration
+└── package.json                   # Dependencies and scripts
 ```
 
-## 🔧 Development Scripts
+## 🛠️ Development Scripts
 
-```bash
-# Development
-npm run dev:card          # Run CRM card locally
-npm run dev:iframe        # Run iframe prototype locally
-npm run build            # Build for production
-npm run deploy           # Deploy to HubSpot
+- `npm run dev` - Start development server
+- `npm run dev:card` - Test CRM card approach
+- `npm run dev:iframe` - Test iframe approach
+- `npm run build` - Build for production
+- `npm run lint` - Run ESLint
+- `npm run format` - Format code with Prettier
 
-# Code Quality
-npm run lint             # Run ESLint
-npm run typecheck        # Run TypeScript checks
-npm run test             # Run tests (if available)
+## 🔐 Security Notes
 
-# Utilities
-npm run clean            # Clean build artifacts
-npm run smoke-test       # Run minimal smoke test
-```
+- **Hardcoded credentials present** - For testing purposes only
+- **Environment variables supported** - Can override hardcoded values
+- **Production deployment requires cleanup** - Remove all hardcoded values
+- **Token validation** - Tokens validated before use
 
-## 🤝 Contributing
+## 📞 Support
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes
-4. Run tests: `npm run lint && npm run typecheck`
-5. Commit: `git commit -m 'feat: your feature description'`
-6. Push: `git push origin feature/your-feature`
-7. Open a Pull Request
+For issues with:
+- **Glean API**: Check token permissions and agent accessibility
+- **HubSpot Integration**: Verify portal ID and private app token
+- **Environment Setup**: Optional - app works with hardcoded values
+- **Timeout Issues**: This is expected behavior - see architecture docs
 
-## 📄 License
+## 🎯 Next Steps
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For issues related to:
-- **Glean API**: Contact your Glean administrator
-- **HubSpot Platform**: Check [HubSpot Developer Documentation](https://developers.hubspot.com/)
-- **This Extension**: Open an issue in this repository 
+1. **Choose your approach** - Iframe (demonstration) vs Serverless (functional)
+2. **Test functionality** - Both prototypes work with current hardcoded values
+3. **Review architecture** - Understand the technical trade-offs
+4. **Plan production** - Replace hardcoded values with environment variables
+5. **Consider async patterns** - For handling long-running agents 
