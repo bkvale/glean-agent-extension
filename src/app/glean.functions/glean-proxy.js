@@ -100,14 +100,14 @@ async function executeGleanAgent(companyName) {
     query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
   });
 
-  // Try the wait endpoint first (blocking response)
+  // Try the wait endpoint first (blocking response) with shorter timeout for HubSpot compatibility
   try {
     const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
       port: 443,
       path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`, // Use the correct endpoint format
       method: 'POST',
-      timeout: CONFIG.TIMEOUT_MS,
+      timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
       headers: {
         'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
         'Content-Type': 'application/json',
@@ -118,14 +118,32 @@ async function executeGleanAgent(companyName) {
     log.http('http_request_outbound', { 
       url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
       method: 'POST',
-      timeoutMs: CONFIG.TIMEOUT_MS
+      timeoutMs: options.timeout
     });
 
     return await makeGleanRequest(options, postData);
   } catch (error) {
     log.error('wait_endpoint_failed', { error: error.message });
     
-    // Fallback to streaming endpoint
+    // Check if it's a timeout or agent-specific error
+    if (error.message.includes('timeout') || error.message.includes('HTTP 408')) {
+      log.start('agent_timeout_detected', { companyName });
+      throw new Error('AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits');
+    }
+    
+    // Check if it's an authentication or permission error
+    if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
+      log.error('authentication_error', { error: error.message });
+      throw new Error('AUTH_ERROR: API token may not have agents scope permissions');
+    }
+    
+    // Check if agent doesn't exist
+    if (error.message.includes('HTTP 404')) {
+      log.error('agent_not_found', { agentId: CONFIG.GLEAN_AGENT_ID });
+      throw new Error('AGENT_NOT_FOUND: The specified agent ID does not exist or is not accessible');
+    }
+    
+    // Fallback to streaming endpoint with even shorter timeout
     try {
       log.start('trying_streaming_endpoint');
       
@@ -134,7 +152,7 @@ async function executeGleanAgent(companyName) {
         port: 443,
         path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`, // Try streaming endpoint
         method: 'POST',
-        timeout: CONFIG.TIMEOUT_MS,
+        timeout: Math.min(CONFIG.TIMEOUT_MS, 4000), // Even shorter timeout for streaming
         headers: {
           'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
           'Content-Type': 'application/json',
@@ -145,13 +163,19 @@ async function executeGleanAgent(companyName) {
       log.http('http_request_outbound', { 
         url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
         method: 'POST',
-        timeoutMs: CONFIG.TIMEOUT_MS
+        timeoutMs: options.timeout
       });
 
       return await makeGleanRequest(options, postData);
     } catch (streamError) {
       log.error('streaming_endpoint_failed', { error: streamError.message });
-      throw new Error(`Both agent endpoints failed. Wait: ${error.message}, Stream: ${streamError.message}`);
+      
+      // Provide specific error context
+      if (streamError.message.includes('timeout')) {
+        throw new Error('STREAM_TIMEOUT: Both agent endpoints exceeded HubSpot timeout limits');
+      }
+      
+      throw new Error(`AGENT_API_FAILED: Both agent endpoints failed. Wait: ${error.message}, Stream: ${streamError.message}`);
     }
   }
 }
@@ -204,6 +228,134 @@ Format the response as a structured strategic account plan with clear sections a
   return makeGleanRequest(options, postData);
 }
 
+// Diagnostic function to test Glean API configuration
+async function testGleanConfiguration() {
+  log.start('testing_glean_configuration', {
+    instance: CONFIG.GLEAN_INSTANCE,
+    baseUrl: CONFIG.GLEAN_BASE_URL,
+    agentId: CONFIG.GLEAN_AGENT_ID,
+    hasToken: !!CONFIG.GLEAN_API_TOKEN,
+    tokenLength: CONFIG.GLEAN_API_TOKEN ? CONFIG.GLEAN_API_TOKEN.length : 0
+  });
+
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    config: {
+      instance: CONFIG.GLEAN_INSTANCE,
+      baseUrl: CONFIG.GLEAN_BASE_URL,
+      agentId: CONFIG.GLEAN_AGENT_ID,
+      hasToken: !!CONFIG.GLEAN_API_TOKEN
+    },
+    tests: {}
+  };
+
+  // Test 1: Basic connectivity to Glean instance
+  try {
+    const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: '/rest/api/v1/agents',
+      method: 'GET',
+      timeout: 5000,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    log.start('testing_basic_connectivity');
+    const agentsResponse = await makeGleanRequest(options);
+    diagnostics.tests.basicConnectivity = {
+      success: true,
+      message: 'Successfully connected to Glean API',
+      agentsCount: agentsResponse.agents ? agentsResponse.agents.length : 'unknown'
+    };
+    log.success('basic_connectivity_test_passed');
+  } catch (error) {
+    diagnostics.tests.basicConnectivity = {
+      success: false,
+      error: error.message,
+      message: 'Failed to connect to Glean API'
+    };
+    log.error('basic_connectivity_test_failed', error);
+  }
+
+  // Test 2: Check if specific agent exists
+  try {
+    const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}`,
+      method: 'GET',
+      timeout: 5000,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    log.start('testing_agent_existence');
+    const agentResponse = await makeGleanRequest(options);
+    diagnostics.tests.agentExists = {
+      success: true,
+      message: 'Agent found and accessible',
+      agentName: agentResponse.name || 'Unknown',
+      agentId: agentResponse.id || CONFIG.GLEAN_AGENT_ID
+    };
+    log.success('agent_existence_test_passed');
+  } catch (error) {
+    diagnostics.tests.agentExists = {
+      success: false,
+      error: error.message,
+      message: 'Agent not found or not accessible'
+    };
+    log.error('agent_existence_test_failed', error);
+  }
+
+  // Test 3: Test chat API as fallback
+  try {
+    const postData = JSON.stringify({
+      messages: [
+        {
+          role: "user",
+          content: "Hello, this is a test message."
+        }
+      ]
+    });
+
+    const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: '/rest/api/v1/chat',
+      method: 'POST',
+      timeout: 5000,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
+
+    log.start('testing_chat_api');
+    const chatResponse = await makeGleanRequest(options, postData);
+    diagnostics.tests.chatApi = {
+      success: true,
+      message: 'Chat API is working',
+      hasResponse: !!chatResponse.messages
+    };
+    log.success('chat_api_test_passed');
+  } catch (error) {
+    diagnostics.tests.chatApi = {
+      success: false,
+      error: error.message,
+      message: 'Chat API failed'
+    };
+    log.error('chat_api_test_failed', error);
+  }
+
+  return diagnostics;
+}
+
 // Main exports.main function
 exports.main = async (context = {}) => {
   const functionStartTime = Date.now();
@@ -222,7 +374,21 @@ exports.main = async (context = {}) => {
   });
 
   try {
-    const { companyName } = context.parameters || {};
+    const { companyName, runDiagnostics } = context.parameters || {};
+
+    // Run diagnostics if requested
+    if (runDiagnostics === 'true' || runDiagnostics === true) {
+      log.start('running_diagnostics');
+      const diagnostics = await testGleanConfiguration();
+      
+      return {
+        statusCode: 200,
+        body: {
+          diagnostics,
+          message: 'Glean API diagnostics completed'
+        }
+      };
+    }
 
     if (!CONFIG.GLEAN_API_TOKEN) {
       log.error('missing_api_token');

@@ -20,6 +20,37 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+
+  const runDiagnostics = async () => {
+    setIsRunningDiagnostics(true);
+    setError(null);
+    setDiagnostics(null);
+
+    try {
+      console.log('Running Glean API diagnostics...');
+
+      const response = await hubspot.serverless('glean-proxy', {
+        parameters: {
+          runDiagnostics: true
+        }
+      });
+
+      console.log('Diagnostics response:', response);
+
+      if (response.statusCode === 200 && response.body.diagnostics) {
+        setDiagnostics(response.body.diagnostics);
+      } else {
+        throw new Error('Failed to run diagnostics');
+      }
+    } catch (err) {
+      console.error('Error running diagnostics:', err);
+      setError(`Diagnostic error: ${err.message}`);
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  };
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -124,8 +155,16 @@ const GleanCard = ({ context, actions }) => {
       if (err.message.includes('Serverless function failed:')) {
         const errorBody = err.message.replace('Serverless function failed: ', '');
         setError(errorBody);
+      } else if (err.message.includes('AGENT_TIMEOUT') || err.message.includes('STREAM_TIMEOUT')) {
+        setError(`The Glean agent is taking longer than expected to respond (exceeded HubSpot's timeout limits). This is a known compatibility issue between long-running AI agents and HubSpot's serverless function constraints. The system automatically fell back to using Glean's chat API instead.`);
+      } else if (err.message.includes('AUTH_ERROR')) {
+        setError(`Authentication error: The Glean API token may not have the required 'agents' scope permissions. Please contact your Glean administrator to ensure the token has access to execute agents.`);
+      } else if (err.message.includes('AGENT_NOT_FOUND')) {
+        setError(`Agent not found: The specified Glean agent ID does not exist or is not accessible. This could be due to an incorrect agent ID or insufficient permissions. The system automatically fell back to using Glean's chat API instead.`);
+      } else if (err.message.includes('AGENT_API_FAILED')) {
+        setError(`Glean agent API failed: Unable to execute the pre-built agent. This could be due to API configuration issues or the agent being temporarily unavailable. The system automatically fell back to using Glean's chat API instead.`);
       } else if (err.message.includes('timeout')) {
-        setError(`The Glean agent is taking longer than expected to respond. This might be due to network issues or the agent being busy.`);
+        setError(`The Glean agent is taking longer than expected to respond. This might be due to network issues or the agent being busy. The system automatically fell back to using Glean's chat API instead.`);
       } else if (err.message.includes('Failed to fetch')) {
         setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
       } else if (err.message.includes('Bearer token')) {
@@ -144,25 +183,35 @@ const GleanCard = ({ context, actions }) => {
     <Box padding="medium">
       <Text variant="h3">Strategic Account Plan</Text>
 
-      {!result && !isLoading && !error && (
-        <Box padding="small">
-          <Text>Generate Strategic Account Plan for this company using Glean AI Agent:</Text>
-          
-          <Box padding="small">
-            <Text variant="small">
-              🤖 Using Glean AI Agent to generate strategic insights
-            </Text>
-          </Box>
-          
-          <Button
-            variant="primary"
-            onClick={runStrategicAccountPlan}
-            disabled={isLoading}
-          >
-            Generate Plan
-          </Button>
-        </Box>
-      )}
+                        {!result && !isLoading && !error && !diagnostics && (
+                    <Box padding="small">
+                      <Text>Generate Strategic Account Plan for this company using Glean AI Agent:</Text>
+
+                      <Box padding="small">
+                        <Text variant="small">
+                          🤖 Using Glean AI Agent to generate strategic insights
+                        </Text>
+                      </Box>
+
+                      <Button
+                        variant="primary"
+                        onClick={runStrategicAccountPlan}
+                        disabled={isLoading}
+                      >
+                        Generate Plan
+                      </Button>
+
+                      <Box padding="small">
+                        <Button
+                          variant="secondary"
+                          onClick={runDiagnostics}
+                          disabled={isRunningDiagnostics}
+                        >
+                          {isRunningDiagnostics ? 'Running Diagnostics...' : '🔧 Test Glean API'}
+                        </Button>
+                      </Box>
+                    </Box>
+                  )}
 
       {isLoading && (
         <Box padding="small">
@@ -170,17 +219,95 @@ const GleanCard = ({ context, actions }) => {
         </Box>
       )}
 
-      {error && (
-        <Box padding="small">
-          <Text variant="error">Error: {error}</Text>
-          <Button
-            variant="secondary"
-            onClick={runStrategicAccountPlan}
-          >
-            Try Again
-          </Button>
-        </Box>
-      )}
+                        {error && (
+                    <Box padding="small">
+                      <Text variant="error">Error: {error}</Text>
+                      <Button
+                        variant="secondary"
+                        onClick={runStrategicAccountPlan}
+                      >
+                        Try Again
+                      </Button>
+                    </Box>
+                  )}
+
+                  {diagnostics && (
+                    <Box padding="small">
+                      <Text variant="h4">🔧 Glean API Diagnostics</Text>
+                      
+                      <Box padding="small">
+                        <Text variant="small" fontWeight="bold">Configuration:</Text>
+                        <Text variant="small">Instance: {diagnostics.config.instance}</Text>
+                        <Text variant="small">Base URL: {diagnostics.config.baseUrl}</Text>
+                        <Text variant="small">Agent ID: {diagnostics.config.agentId}</Text>
+                        <Text variant="small">Has Token: {diagnostics.config.hasToken ? '✅ Yes' : '❌ No'}</Text>
+                      </Box>
+
+                      <Box padding="small">
+                        <Text variant="small" fontWeight="bold">Test Results:</Text>
+                        
+                        {diagnostics.tests.basicConnectivity && (
+                          <Box padding="small">
+                            <Text variant="small">
+                              {diagnostics.tests.basicConnectivity.success ? '✅' : '❌'} Basic Connectivity: 
+                              {diagnostics.tests.basicConnectivity.message}
+                              {diagnostics.tests.basicConnectivity.agentsCount && 
+                                ` (${diagnostics.tests.basicConnectivity.agentsCount} agents found)`
+                              }
+                            </Text>
+                            {!diagnostics.tests.basicConnectivity.success && (
+                              <Text variant="error">
+                                Error: {diagnostics.tests.basicConnectivity.error}
+                              </Text>
+                            )}
+                          </Box>
+                        )}
+
+                        {diagnostics.tests.agentExists && (
+                          <Box padding="small">
+                            <Text variant="small">
+                              {diagnostics.tests.agentExists.success ? '✅' : '❌'} Agent Exists: 
+                              {diagnostics.tests.agentExists.message}
+                              {diagnostics.tests.agentExists.agentName && 
+                                ` (${diagnostics.tests.agentExists.agentName})`
+                              }
+                            </Text>
+                            {!diagnostics.tests.agentExists.success && (
+                              <Text variant="error">
+                                Error: {diagnostics.tests.agentExists.error}
+                              </Text>
+                            )}
+                          </Box>
+                        )}
+
+                        {diagnostics.tests.chatApi && (
+                          <Box padding="small">
+                            <Text variant="small">
+                              {diagnostics.tests.chatApi.success ? '✅' : '❌'} Chat API: 
+                              {diagnostics.tests.chatApi.message}
+                            </Text>
+                            {!diagnostics.tests.chatApi.success && (
+                              <Text variant="error">
+                                Error: {diagnostics.tests.chatApi.error}
+                              </Text>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+
+                      <Box padding="small">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setDiagnostics(null);
+                            setError(null);
+                          }}
+                        >
+                          Back to Generate Plan
+                        </Button>
+                      </Box>
+                    </Box>
+                  )}
 
       {result && !result.error && (
         <Box padding="small">
