@@ -102,124 +102,155 @@ async function makeGleanRequest(options, postData = null) {
 async function executeGleanAgent(companyName) {
   log.start('execute_glean_agent', { companyName, agentId: CONFIG.GLEAN_AGENT_ID });
   
-  // Based on the Agents API documentation, use the correct endpoint and format
-  const postData = JSON.stringify({
-    query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-  });
+  // Try the search endpoint first since it's working
+  try {
+    const searchBody = {
+      query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+      agent_id: CONFIG.GLEAN_AGENT_ID
+    };
+    
+    const postData = JSON.stringify(searchBody);
+    
+    const options = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: '/rest/api/v1/agents/search',
+      method: 'POST',
+      timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    };
 
-  // Try the correct endpoints according to Glean documentation
-  const possibleEndpoints = [
-    '/rest/api/v1/agents/runs/wait',
-    '/rest/api/v1/agents/runs/stream'
-  ];
+    log.http('http_request_outbound', { 
+      url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/search`,
+      method: 'POST',
+      timeoutMs: options.timeout,
+      requestBody: searchBody
+    });
 
-  let lastError = null;
-  
-  for (const endpoint of possibleEndpoints) {
-    try {
-      // Try different request body formats based on the error message
-      const requestFormats = [
-        // Format 1: Standard format
-        {
-          agent_id: CONFIG.GLEAN_AGENT_ID,
-          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-        },
-        // Format 2: With input field
-        {
-          agent_id: CONFIG.GLEAN_AGENT_ID,
-          input: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-        },
-        // Format 3: With message format
-        {
-          agent_id: CONFIG.GLEAN_AGENT_ID,
-          messages: [
-            {
-              role: "user",
-              content: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-            }
-          ]
-        },
-        // Format 4: With prompt field
-        {
-          agent_id: CONFIG.GLEAN_AGENT_ID,
-          prompt: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+    const result = await makeGleanRequest(options, postData);
+    log.success('agent_execution_success_via_search', { companyName });
+    return result;
+  } catch (searchError) {
+    log.error('search_endpoint_execution_failed', { error: searchError.message });
+    
+    // Fallback to standard endpoints (though they're likely to fail)
+    const possibleEndpoints = [
+      '/rest/api/v1/agents/runs/wait',
+      '/rest/api/v1/agents/runs/stream'
+    ];
+
+    let lastError = searchError;
+    
+    for (const endpoint of possibleEndpoints) {
+      try {
+        // Try different request body formats based on the error message
+        const requestFormats = [
+          // Format 1: Standard format
+          {
+            agent_id: CONFIG.GLEAN_AGENT_ID,
+            query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+          },
+          // Format 2: With input field
+          {
+            agent_id: CONFIG.GLEAN_AGENT_ID,
+            input: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+          },
+          // Format 3: With message format
+          {
+            agent_id: CONFIG.GLEAN_AGENT_ID,
+            messages: [
+              {
+                role: "user",
+                content: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+              }
+            ]
+          },
+          // Format 4: With prompt field
+          {
+            agent_id: CONFIG.GLEAN_AGENT_ID,
+            prompt: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+          }
+        ];
+
+        let lastFormatError = null;
+        
+        for (const requestBody of requestFormats) {
+          try {
+            const postData = JSON.stringify(requestBody);
+            
+            const options = {
+              hostname: CONFIG.GLEAN_BASE_URL,
+              port: 443,
+              path: endpoint,
+              method: 'POST',
+              timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
+              headers: {
+                'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
+              }
+            };
+
+            log.http('http_request_outbound', { 
+              url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
+              method: 'POST',
+              timeoutMs: options.timeout,
+              requestBody: requestBody
+            });
+
+            const result = await makeGleanRequest(options, postData);
+            log.success('agent_execution_success', { endpoint, companyName, requestFormat: Object.keys(requestBody) });
+            return result;
+          } catch (formatError) {
+            lastFormatError = formatError;
+            log.error('request_format_failed', { endpoint, requestFormat: Object.keys(requestBody), error: formatError.message });
+            continue; // Try next format
+          }
         }
-      ];
-
-      let lastFormatError = null;
-      
-      for (const requestBody of requestFormats) {
-        try {
-          const postData = JSON.stringify(requestBody);
-          
-          const options = {
-            hostname: CONFIG.GLEAN_BASE_URL,
-            port: 443,
-            path: endpoint,
-            method: 'POST',
-            timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
-            headers: {
-              'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(postData)
-            }
-          };
-
-          log.http('http_request_outbound', { 
-            url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
-            method: 'POST',
-            timeoutMs: options.timeout,
-            requestBody: requestBody
-          });
-
-          const result = await makeGleanRequest(options, postData);
-          log.success('agent_execution_success', { endpoint, companyName, requestFormat: Object.keys(requestBody) });
-          return result;
-        } catch (formatError) {
-          lastFormatError = formatError;
-          log.error('request_format_failed', { endpoint, requestFormat: Object.keys(requestBody), error: formatError.message });
-          continue; // Try next format
+        
+        // If we get here, all formats failed for this endpoint
+        lastError = lastFormatError;
+        log.error('all_formats_failed_for_endpoint', { endpoint, lastError: lastFormatError?.message });
+        
+      } catch (error) {
+        lastError = error;
+        log.error('agent_endpoint_failed', { endpoint, error: error.message });
+        
+        // Check if it's a timeout
+        if (error.message.includes('timeout') || error.message.includes('HTTP 408')) {
+          log.start('agent_timeout_detected', { companyName, endpoint });
+          throw new Error('AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits');
         }
+        
+        // Check if it's an authentication or permission error
+        if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
+          log.error('authentication_error', { error: error.message, endpoint });
+          throw new Error('AUTH_ERROR: API token may not have agents scope permissions');
+        }
+        
+        // For 404 errors, try the next endpoint
+        if (error.message.includes('HTTP 404')) {
+          log.error('endpoint_not_found', { endpoint });
+          continue; // Try next endpoint
+        }
+        
+        // For other errors, also try next endpoint
+        continue;
       }
-      
-      // If we get here, all formats failed for this endpoint
-      lastError = lastFormatError;
-      log.error('all_formats_failed_for_endpoint', { endpoint, lastError: lastFormatError?.message });
-      
-    } catch (error) {
-      lastError = error;
-      log.error('agent_endpoint_failed', { endpoint, error: error.message });
-      
-      // Check if it's a timeout
-      if (error.message.includes('timeout') || error.message.includes('HTTP 408')) {
-        log.start('agent_timeout_detected', { companyName, endpoint });
-        throw new Error('AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits');
-      }
-      
-      // Check if it's an authentication or permission error
-      if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
-        log.error('authentication_error', { error: error.message, endpoint });
-        throw new Error('AUTH_ERROR: API token may not have agents scope permissions');
-      }
-      
-      // For 404 errors, try the next endpoint
-      if (error.message.includes('HTTP 404')) {
-        log.error('endpoint_not_found', { endpoint });
-        continue; // Try next endpoint
-      }
-      
-      // For other errors, also try next endpoint
-      continue;
     }
-  }
 
-  // If we get here, all endpoints failed
-  log.error('all_agent_endpoints_failed', { 
-    companyName, 
-    attemptedEndpoints: possibleEndpoints,
-    lastError: lastError?.message 
-  });
-  throw new Error(`AGENT_API_FAILED: All agent endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
+    // If we get here, all endpoints failed
+    log.error('all_agent_endpoints_failed', { 
+      companyName, 
+      attemptedEndpoints: ['/rest/api/v1/agents/search', ...possibleEndpoints],
+      lastError: lastError?.message 
+    });
+    throw new Error(`AGENT_API_FAILED: All agent endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
+  }
 }
 
 // Fallback: Use chat API with strategic planning prompt

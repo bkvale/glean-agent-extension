@@ -421,7 +421,7 @@ const GleanCard = ({ context, actions }) => {
       )}
     </Box>
   );
-};
+}; 
 
 export default GleanCard;
 
