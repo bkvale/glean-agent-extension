@@ -65,8 +65,7 @@ async function makeGleanRequest(companyName, attempt = 1) {
       headers: {
         'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData),
-        'X-Glean-ActAs': 'benkvale@trace3.com' // Add user impersonation header for global tokens
+        'Content-Length': Buffer.byteLength(postData)
       }
     };
 
