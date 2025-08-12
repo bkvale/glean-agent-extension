@@ -100,59 +100,25 @@ async function executeGleanAgent(companyName) {
     query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
   });
 
-  // Try the wait endpoint first (blocking response) with shorter timeout for HubSpot compatibility
-  try {
-    const options = {
-      hostname: CONFIG.GLEAN_BASE_URL,
-      port: 443,
-      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`, // Use the correct endpoint format
-      method: 'POST',
-      timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
-      headers: {
-        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
+  // Try different possible endpoints for agent execution
+  const possibleEndpoints = [
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/invoke`
+  ];
 
-    log.http('http_request_outbound', { 
-      url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
-      method: 'POST',
-      timeoutMs: options.timeout
-    });
-
-    return await makeGleanRequest(options, postData);
-  } catch (error) {
-    log.error('wait_endpoint_failed', { error: error.message });
-    
-    // Check if it's a timeout or agent-specific error
-    if (error.message.includes('timeout') || error.message.includes('HTTP 408')) {
-      log.start('agent_timeout_detected', { companyName });
-      throw new Error('AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits');
-    }
-    
-    // Check if it's an authentication or permission error
-    if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
-      log.error('authentication_error', { error: error.message });
-      throw new Error('AUTH_ERROR: API token may not have agents scope permissions');
-    }
-    
-    // Check if agent doesn't exist
-    if (error.message.includes('HTTP 404')) {
-      log.error('agent_not_found', { agentId: CONFIG.GLEAN_AGENT_ID });
-      throw new Error('AGENT_NOT_FOUND: The specified agent ID does not exist or is not accessible');
-    }
-    
-    // Fallback to streaming endpoint with even shorter timeout
+  let lastError = null;
+  
+  for (const endpoint of possibleEndpoints) {
     try {
-      log.start('trying_streaming_endpoint');
-      
       const options = {
         hostname: CONFIG.GLEAN_BASE_URL,
         port: 443,
-        path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`, // Try streaming endpoint
+        path: endpoint,
         method: 'POST',
-        timeout: Math.min(CONFIG.TIMEOUT_MS, 4000), // Even shorter timeout for streaming
+        timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
         headers: {
           'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
           'Content-Type': 'application/json',
@@ -161,23 +127,48 @@ async function executeGleanAgent(companyName) {
       };
 
       log.http('http_request_outbound', { 
-        url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
+        url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
         method: 'POST',
         timeoutMs: options.timeout
       });
 
-      return await makeGleanRequest(options, postData);
-    } catch (streamError) {
-      log.error('streaming_endpoint_failed', { error: streamError.message });
+      const result = await makeGleanRequest(options, postData);
+      log.success('agent_execution_success', { endpoint, companyName });
+      return result;
+    } catch (error) {
+      lastError = error;
+      log.error('agent_endpoint_failed', { endpoint, error: error.message });
       
-      // Provide specific error context
-      if (streamError.message.includes('timeout')) {
-        throw new Error('STREAM_TIMEOUT: Both agent endpoints exceeded HubSpot timeout limits');
+      // Check if it's a timeout
+      if (error.message.includes('timeout') || error.message.includes('HTTP 408')) {
+        log.start('agent_timeout_detected', { companyName, endpoint });
+        throw new Error('AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits');
       }
       
-      throw new Error(`AGENT_API_FAILED: Both agent endpoints failed. Wait: ${error.message}, Stream: ${streamError.message}`);
+      // Check if it's an authentication or permission error
+      if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
+        log.error('authentication_error', { error: error.message, endpoint });
+        throw new Error('AUTH_ERROR: API token may not have agents scope permissions');
+      }
+      
+      // For 404 errors, try the next endpoint
+      if (error.message.includes('HTTP 404')) {
+        log.error('endpoint_not_found', { endpoint });
+        continue; // Try next endpoint
+      }
+      
+      // For other errors, also try next endpoint
+      continue;
     }
   }
+
+  // If we get here, all endpoints failed
+  log.error('all_agent_endpoints_failed', { 
+    companyName, 
+    attemptedEndpoints: possibleEndpoints,
+    lastError: lastError?.message 
+  });
+  throw new Error(`AGENT_API_FAILED: All agent endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
 }
 
 // Fallback: Use chat API with strategic planning prompt
@@ -316,38 +307,69 @@ async function testGleanConfiguration() {
     log.error('agent_existence_test_failed', error);
   }
 
-  // Test 3: Test agent execution capability
+  // Test 3: Test agent execution capability with multiple endpoint attempts
   try {
     const postData = JSON.stringify({
       query: "Test query for agent execution"
     });
 
-    const options = {
-      hostname: CONFIG.GLEAN_BASE_URL,
-      port: 443,
-      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
-      method: 'POST',
-      timeout: 3000, // Short timeout for test
-      headers: {
-        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
+    // Try different possible endpoints
+    const possibleEndpoints = [
+      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
+      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
+      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
+      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`,
+      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/invoke`
+    ];
 
-    log.start('testing_agent_execution');
-    const agentResponse = await makeGleanRequest(options, postData);
+    let lastError = null;
+    
+    for (const endpoint of possibleEndpoints) {
+      try {
+        const options = {
+          hostname: CONFIG.GLEAN_BASE_URL,
+          port: 443,
+          path: endpoint,
+          method: 'POST',
+          timeout: 2000, // Very short timeout for testing
+          headers: {
+            'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+
+        log.start('testing_agent_execution_endpoint', { endpoint });
+        const agentResponse = await makeGleanRequest(options, postData);
+        
+        diagnostics.tests.agentExecution = {
+          success: true,
+          message: `Agent execution is working via ${endpoint}`,
+          workingEndpoint: endpoint,
+          hasResponse: !!agentResponse.messages || !!agentResponse.response
+        };
+        log.success('agent_execution_test_passed', { endpoint });
+        return; // Exit on first success
+      } catch (error) {
+        lastError = error;
+        log.error('agent_execution_endpoint_failed', { endpoint, error: error.message });
+        continue; // Try next endpoint
+      }
+    }
+
+    // If we get here, all endpoints failed
     diagnostics.tests.agentExecution = {
-      success: true,
-      message: 'Agent execution is working',
-      hasResponse: !!agentResponse.messages || !!agentResponse.response
+      success: false,
+      error: lastError ? lastError.message : 'All endpoints failed',
+      message: 'Agent execution failed - tried multiple endpoints',
+      attemptedEndpoints: possibleEndpoints
     };
-    log.success('agent_execution_test_passed');
+    log.error('agent_execution_all_endpoints_failed', { lastError: lastError?.message });
   } catch (error) {
     diagnostics.tests.agentExecution = {
       success: false,
       error: error.message,
-      message: 'Agent execution failed (this is expected if agent takes too long)'
+      message: 'Agent execution test failed unexpectedly'
     };
     log.error('agent_execution_test_failed', error);
   }
