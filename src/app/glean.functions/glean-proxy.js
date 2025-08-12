@@ -342,67 +342,55 @@ exports.main = async (context = {}) => {
     
     // Check if we should use async flow for long-running agents
     if (CONFIG.USE_ASYNC_FLOW || asyncMode) {
-      // Start the agent asynchronously and return immediately
-      log.start('async_flow_start', { companyName });
+      // For now, let's try a synchronous approach to avoid polling issues
+      log.start('sync_flow_start', { companyName });
       
-      // Start the agent (this will run in background)
-      makeGleanRequest(companyName)
-        .then(data => {
-          log.success('async_agent_completed', { companyName });
-        })
-        .catch(error => {
-          log.error('async_agent_error', { companyName, error: error.message });
+      try {
+        const data = await makeGleanRequest(companyName);
+        
+        const totalDuration = Date.now() - functionStartTime;
+        
+        log.success('glean_api_success', { 
+          companyName, 
+          duration: totalDuration,
+          dataKeys: Object.keys(data || {}),
+          hasMessages: data?.messages ? Array.isArray(data.messages) : false
         });
-      
-      const response = {
-        statusCode: 202, // Accepted
-        body: {
-          status: 'started',
-          message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
-          companyName,
-          timestamp: new Date().toISOString(),
-          async: true
-        }
-      };
-      
-      log.return('async_flow_return', { 
-        statusCode: response.statusCode,
-        message: response.body.message
-      });
-      
-      return response;
-    } else {
-      // Synchronous flow (current approach)
-      const data = await makeGleanRequest(companyName);
-      
-      const totalDuration = Date.now() - functionStartTime;
-      
-      log.success('glean_api_success', { 
-        companyName,
-        totalDuration,
-        dataKeys: Object.keys(data),
-        messageCount: data.messages ? data.messages.length : 0
-      });
-      
-      const response = {
-        statusCode: 200,
-        body: {
-          ...data,
-          metadata: {
-            duration: totalDuration,
-            timestamp: new Date().toISOString(),
-            companyName
+        
+        const response = {
+          statusCode: 200,
+          body: {
+            ...data,
+            metadata: {
+              duration: totalDuration,
+              timestamp: new Date().toISOString(),
+              companyName
+            }
           }
-        }
-      };
-      
-      log.return('return_to_ui', { 
-        statusCode: response.statusCode,
-        bodyKeys: Object.keys(response.body),
-        hasMetadata: !!response.body.metadata
-      });
-      
-      return response;
+        };
+        
+        log.return('return_to_ui', { 
+          statusCode: response.statusCode,
+          messageCount: data?.messages?.length || 0
+        });
+        
+        return response;
+      } catch (error) {
+        log.error('sync_flow_error', { 
+          companyName, 
+          error: error.message, 
+          stack: error.stack 
+        });
+        
+        return {
+          statusCode: 500,
+          body: {
+            error: `Glean API error: ${error.message}`,
+            companyName,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
     }
     
   } catch (error) {

@@ -165,6 +165,31 @@ const GleanCard = ({ context, actions }) => {
         return;
       }
 
+      // Handle synchronous response (status 200)
+      if (response.statusCode === 200) {
+        // Save the plan to persistent storage
+        if (gleanData.messages && Array.isArray(gleanData.messages)) {
+          const companyId = context.crm?.objectId;
+          const planContent = gleanData.messages
+            .map(msg => msg.content?.map(c => c.text).join('\n'))
+            .join('\n\n');
+          
+          try {
+            await savePlan(companyId, planContent, {
+              timestamp: new Date().toISOString(),
+              companyName,
+              duration: gleanData.metadata?.duration
+            });
+          } catch (saveError) {
+            console.warn('Failed to save plan:', saveError);
+            // Don't fail the UI if save fails
+          }
+        }
+        
+        setResult(gleanData);
+        return;
+      }
+
       // Handle missing messages gracefully
       if (!gleanData.messages || !Array.isArray(gleanData.messages)) {
         console.error('Invalid response structure - full response:', JSON.stringify(response, null, 2));
