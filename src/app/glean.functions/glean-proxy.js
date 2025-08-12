@@ -109,23 +109,31 @@ async function makeGleanRequest(options, postData = null) {
 async function executeGleanAgent(companyName) {
   log.start('execute_glean_agent', { companyName, agentId: CONFIG.GLEAN_AGENT_ID });
   
-  // Use the correct request format based on the API documentation
+  // Use the exact format from the response schema documentation
   const executionAttempts = [
-    // Attempt 1: Try streaming endpoint with input format
+    // Attempt 1: Try the exact format from the schema documentation
     {
-      name: 'streaming_with_input',
-      endpoint: '/rest/api/v1/agents/runs/stream',
+      name: 'schema_documentation_format',
+      endpoint: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
       body: {
         agent_id: CONFIG.GLEAN_AGENT_ID,
-        input: {
-          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-        }
+        messages: [
+          {
+            role: "USER",
+            content: [
+              {
+                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+                type: "text"
+              }
+            ]
+          }
+        ]
       }
     },
-    // Attempt 2: Try streaming endpoint with messages format
+    // Attempt 2: Try streaming endpoint with same format
     {
-      name: 'streaming_with_messages',
+      name: 'streaming_schema_format',
       endpoint: '/rest/api/v1/agents/runs/stream',
       method: 'POST',
       body: {
@@ -143,9 +151,9 @@ async function executeGleanAgent(companyName) {
         ]
       }
     },
-    // Attempt 3: Try wait endpoint with input format
+    // Attempt 3: Try with input object format
     {
-      name: 'wait_with_input',
+      name: 'input_object_format',
       endpoint: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
       body: {
@@ -153,26 +161,6 @@ async function executeGleanAgent(companyName) {
         input: {
           query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
         }
-      }
-    },
-    // Attempt 4: Try wait endpoint with messages format
-    {
-      name: 'wait_with_messages',
-      endpoint: '/rest/api/v1/agents/runs/wait',
-      method: 'POST',
-      body: {
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        messages: [
-          {
-            role: "USER",
-            content: [
-              {
-                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-                type: "text"
-              }
-            ]
-          }
-        ]
       }
     }
   ];
@@ -240,7 +228,7 @@ async function executeGleanAgent(companyName) {
   log.error('all_execution_attempts_failed', { 
     companyName, 
     attemptedMethods: executionAttempts.map(a => a.name),
-    lastError: lastError?.message 
+    lastError: lastError?.message
   });
   throw new Error(`AGENT_API_FAILED: All execution attempts failed. Last error: ${lastError?.message || 'Unknown error'}`);
 }
