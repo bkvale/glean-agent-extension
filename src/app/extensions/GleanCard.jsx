@@ -86,12 +86,31 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('Invalid response structure: gleanData is not an object');
       }
 
+      // Handle async response (status 202)
+      if (response.statusCode === 202) {
+        setResult({
+          async: true,
+          status: 'started',
+          message: gleanData.message || 'Generation started',
+          companyName: gleanData.companyName
+        });
+        return;
+      }
+
+      // Handle missing messages gracefully
       if (!gleanData.messages || !Array.isArray(gleanData.messages)) {
         console.error('Invalid response structure - full response:', JSON.stringify(response, null, 2));
         console.error('Invalid response structure - glean data:', JSON.stringify(gleanData, null, 2));
         console.error('Messages property:', gleanData.messages);
         console.error('Messages is array?', Array.isArray(gleanData.messages));
-        throw new Error(`Invalid response structure: expected messages array, got ${typeof gleanData.messages}`);
+        
+        // Instead of throwing, show a user-friendly message
+        setResult({
+          error: true,
+          message: 'Received response from Glean but it was in an unexpected format. Please try again.',
+          rawData: gleanData
+        });
+        return;
       }
 
                         console.log('Setting result with messages:', gleanData.messages);
@@ -192,7 +211,25 @@ const GleanCard = ({ context, actions }) => {
       {result && (
         <Box padding="small">
           <Text variant="h4">Strategic Account Plan Results:</Text>
-          {result.messages && Array.isArray(result.messages) ? (
+
+          {/* Handle async response */}
+          {result.async && (
+            <Box padding="small">
+              <Text variant="success">✅ {result.message}</Text>
+              <Text variant="small">The agent is running in the background. This may take 1-2 minutes to complete.</Text>
+            </Box>
+          )}
+
+          {/* Handle error response */}
+          {result.error && (
+            <Box padding="small">
+              <Text variant="error">⚠️ {result.message}</Text>
+              <Text variant="small">Please try again or contact support if this persists.</Text>
+            </Box>
+          )}
+
+          {/* Handle normal response */}
+          {result.messages && Array.isArray(result.messages) && (
             result.messages.map((message, index) => (
               <Box key={index} padding="small">
                 <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
@@ -205,9 +242,16 @@ const GleanCard = ({ context, actions }) => {
                 )}
               </Box>
             ))
-          ) : (
-            <Text>No messages in response</Text>
           )}
+
+          {/* Show raw data for debugging */}
+          {result.rawData && (
+            <Box padding="small">
+              <Text variant="small">Debug Info:</Text>
+              <Text variant="small">{JSON.stringify(result.rawData, null, 2)}</Text>
+            </Box>
+          )}
+
           <Button
             variant="secondary"
             onClick={() => {
