@@ -318,15 +318,22 @@ exports.main = async (context = {}) => {
             }
           };
         } else {
-          // Other error
-          log.error('status_check_error', error);
+          // Other error - log the full error details
+          log.error('status_check_error', { 
+            companyName, 
+            attempt, 
+            error: error.message, 
+            stack: error.stack,
+            errorType: error.constructor.name
+          });
           return {
             statusCode: 500,
             body: {
-              error: error.message,
+              error: `Server error: ${error.message}`,
               companyName,
               timestamp: new Date().toISOString(),
-              attempt
+              attempt,
+              errorType: error.constructor.name
             }
           };
         }
@@ -399,37 +406,19 @@ exports.main = async (context = {}) => {
     }
     
   } catch (error) {
-    const totalDuration = Date.now() - functionStartTime;
-    
-    log.error('function_error', error);
-    
-    // Categorize errors for better UI handling
-    let errorCategory = 'unknown';
-    let userMessage = 'Failed to generate strategic account plan';
-    
-    if (error.message.includes('timeout')) {
-      errorCategory = 'timeout';
-      userMessage = 'The Glean agent is taking longer than expected to respond. This is normal for complex analysis. Please try again in a few minutes.';
-    } else if (error.message.includes('HTTP 401')) {
-      errorCategory = 'upstream_4xx';
-      userMessage = 'Authentication failed. Please check the Glean API token configuration.';
-    } else if (error.message.includes('HTTP 404')) {
-      errorCategory = 'upstream_404';
-      userMessage = 'Glean agent not found. Please check the agent ID configuration.';
-    } else if (error.message.includes('HTTP 5')) {
-      errorCategory = 'upstream_5xx';
-      userMessage = 'Glean service temporarily unavailable. Please try again.';
-    }
+    log.error('function_error', { 
+      error: error.message, 
+      stack: error.stack,
+      errorType: error.constructor.name,
+      context: context
+    });
     
     return {
       statusCode: 500,
       body: {
-        error: userMessage,
-        category: errorCategory,
-        message: error.message,
-        details: error.stack,
-        duration: totalDuration,
-        timestamp: new Date().toISOString()
+        error: `Function error: ${error.message}`,
+        timestamp: new Date().toISOString(),
+        errorType: error.constructor.name
       }
     };
   }
