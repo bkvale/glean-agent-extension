@@ -62,7 +62,11 @@ const GleanCard = ({ context, actions }) => {
         } else if (response?.statusCode === 202) {
           // Still running, continue polling
           console.log('Job still running, continuing to poll...');
-          await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+          await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
+        } else if (response?.statusCode === 500) {
+          // Server error, wait longer and try again
+          console.log('Server error, waiting longer before retry...');
+          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60 seconds
         } else {
           // Error or unexpected response
           console.error('Unexpected poll response:', response);
@@ -77,7 +81,8 @@ const GleanCard = ({ context, actions }) => {
           setIsPolling(false);
           return;
         }
-        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+        // Wait longer on errors
+        await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60 seconds
       }
     }
     
@@ -256,7 +261,7 @@ const GleanCard = ({ context, actions }) => {
       {isPolling && (
         <Box padding="small">
           <Text>🔄 Checking for completion... (Attempt {pollingCount}/30)</Text>
-          <Text variant="small">This may take 1-2 minutes. Checking every 10 seconds.</Text>
+          <Text variant="small">This may take 2-3 minutes. Checking every 30-60 seconds.</Text>
         </Box>
       )}
 
