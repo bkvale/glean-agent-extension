@@ -1,6 +1,9 @@
 // HubSpot Serverless Function to proxy Glean API requests
 const https = require('https');
 
+// In-memory job store (in production, this would be a database)
+const jobStore = new Map();
+
 // Configuration with environment variable fallbacks
 const CONFIG = {
   GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
@@ -206,50 +209,65 @@ exports.main = async (context = {}) => {
     if (checkStatus) {
       log.start('status_check', { companyName, attempt });
       
-      try {
-        // Try to get the result from the agent
-        const data = await makeGleanRequest(companyName);
-        
-        if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
-          // Job completed successfully
-          log.success('status_check_success', { companyName, attempt });
-          return {
-            statusCode: 200,
-            body: {
-              ...data,
-              metadata: {
-                timestamp: new Date().toISOString(),
-                companyName,
-                statusCheck: true,
-                attempt
-              }
-            }
-          };
-        } else {
-          // Job still running or no results yet
-          log.start('status_check_running', { companyName, attempt });
-          return {
-            statusCode: 202,
-            body: {
-              status: 'running',
-              message: 'Job is still running',
-              companyName,
+      // Check if we have a job for this company
+      const jobKey = `job_${companyName}`;
+      const job = jobStore.get(jobKey);
+      
+      if (!job) {
+        log.error('status_check_no_job', { companyName });
+        return {
+          statusCode: 404,
+          body: {
+            error: 'No job found for this company',
+            companyName,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
+      
+      if (job.status === 'completed' && job.result) {
+        // Job completed successfully
+        log.success('status_check_success', { companyName, attempt });
+        jobStore.delete(jobKey); // Clean up
+        return {
+          statusCode: 200,
+          body: {
+            ...job.result,
+            metadata: {
               timestamp: new Date().toISOString(),
-              attempt
+              companyName,
+              statusCheck: true,
+              attempt,
+              jobDuration: Date.now() - job.startTime
             }
-          };
-        }
-      } catch (error) {
-        log.error('status_check_error', error);
+          }
+        };
+      } else if (job.status === 'failed') {
+        // Job failed
+        log.error('status_check_failed', { companyName, error: job.error });
+        jobStore.delete(jobKey); // Clean up
+        return {
+          statusCode: 500,
+          body: {
+            error: job.error || 'Job failed',
+            companyName,
+            timestamp: new Date().toISOString(),
+            attempt
+          }
+        };
+      } else {
+        // Job still running
+        const elapsed = Date.now() - job.startTime;
+        log.start('status_check_running', { companyName, attempt, elapsed });
         return {
           statusCode: 202,
           body: {
             status: 'running',
-            message: 'Job is still running',
+            message: `Job is still running (${Math.round(elapsed/1000)}s elapsed)`,
             companyName,
             timestamp: new Date().toISOString(),
             attempt,
-            error: error.message
+            elapsed
           }
         };
       }
@@ -260,10 +278,29 @@ exports.main = async (context = {}) => {
       // Start the agent asynchronously and return immediately
       log.start('async_flow_start', { companyName });
       
+      // Create job record
+      const jobKey = `job_${companyName}`;
+      const job = {
+        status: 'running',
+        startTime: Date.now(),
+        companyName
+      };
+      jobStore.set(jobKey, job);
+      
       // Start the agent (this will run in background)
-      makeGleanRequest(companyName).catch(error => {
-        log.error('async_agent_error', error);
-      });
+      makeGleanRequest(companyName)
+        .then(data => {
+          log.success('async_agent_completed', { companyName });
+          job.status = 'completed';
+          job.result = data;
+          job.endTime = Date.now();
+        })
+        .catch(error => {
+          log.error('async_agent_error', error);
+          job.status = 'failed';
+          job.error = error.message;
+          job.endTime = Date.now();
+        });
       
       const response = {
         statusCode: 202, // Accepted
