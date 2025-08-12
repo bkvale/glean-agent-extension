@@ -110,37 +110,75 @@ async function executeGleanAgent(companyName) {
   
   for (const endpoint of possibleEndpoints) {
     try {
-      // Include agent_id in the request body as per Glean documentation
-      const requestBody = {
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-      };
-      
-      const postData = JSON.stringify(requestBody);
-      
-      const options = {
-        hostname: CONFIG.GLEAN_BASE_URL,
-        port: 443,
-        path: endpoint,
-        method: 'POST',
-        timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
-        headers: {
-          'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
+      // Try different request body formats based on the error message
+      const requestFormats = [
+        // Format 1: Standard format
+        {
+          agent_id: CONFIG.GLEAN_AGENT_ID,
+          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        },
+        // Format 2: With input field
+        {
+          agent_id: CONFIG.GLEAN_AGENT_ID,
+          input: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        },
+        // Format 3: With message format
+        {
+          agent_id: CONFIG.GLEAN_AGENT_ID,
+          messages: [
+            {
+              role: "user",
+              content: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+            }
+          ]
+        },
+        // Format 4: With prompt field
+        {
+          agent_id: CONFIG.GLEAN_AGENT_ID,
+          prompt: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
         }
-      };
+      ];
 
-      log.http('http_request_outbound', { 
-        url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
-        method: 'POST',
-        timeoutMs: options.timeout,
-        requestBody: requestBody
-      });
+      let lastFormatError = null;
+      
+      for (const requestBody of requestFormats) {
+        try {
+          const postData = JSON.stringify(requestBody);
+          
+          const options = {
+            hostname: CONFIG.GLEAN_BASE_URL,
+            port: 443,
+            path: endpoint,
+            method: 'POST',
+            timeout: Math.min(CONFIG.TIMEOUT_MS, 6000), // Cap at 6 seconds for HubSpot safety
+            headers: {
+              'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            }
+          };
 
-      const result = await makeGleanRequest(options, postData);
-      log.success('agent_execution_success', { endpoint, companyName });
-      return result;
+          log.http('http_request_outbound', { 
+            url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
+            method: 'POST',
+            timeoutMs: options.timeout,
+            requestBody: requestBody
+          });
+
+          const result = await makeGleanRequest(options, postData);
+          log.success('agent_execution_success', { endpoint, companyName, requestFormat: Object.keys(requestBody) });
+          return result;
+        } catch (formatError) {
+          lastFormatError = formatError;
+          log.error('request_format_failed', { endpoint, requestFormat: Object.keys(requestBody), error: formatError.message });
+          continue; // Try next format
+        }
+      }
+      
+      // If we get here, all formats failed for this endpoint
+      lastError = lastFormatError;
+      log.error('all_formats_failed_for_endpoint', { endpoint, lastError: lastFormatError?.message });
+      
     } catch (error) {
       lastError = error;
       log.error('agent_endpoint_failed', { endpoint, error: error.message });
@@ -399,45 +437,90 @@ async function discoverAgentExecutionEndpoints() {
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`
   ];
 
-  const postData = JSON.stringify({
-    agent_id: CONFIG.GLEAN_AGENT_ID,
-    query: "Test query for agent execution"
-  });
+  // Test different request formats for each endpoint
+  const requestFormats = [
+    {
+      name: 'query_format',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        query: "Test query for agent execution"
+      }
+    },
+    {
+      name: 'input_format',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        input: "Test input for agent execution"
+      }
+    },
+    {
+      name: 'messages_format',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        messages: [
+          {
+            role: "user",
+            content: "Test message for agent execution"
+          }
+        ]
+      }
+    },
+    {
+      name: 'prompt_format',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        prompt: "Test prompt for agent execution"
+      }
+    }
+  ];
 
   for (const endpoint of endpointPatterns) {
-    try {
-      const options = {
-        hostname: CONFIG.GLEAN_BASE_URL,
-        port: 443,
-        path: endpoint,
-        method: 'POST',
-        timeout: 2000, // Very short timeout for discovery
-        headers: {
-          'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      };
+    let endpointWorked = false;
+    
+    for (const format of requestFormats) {
+      try {
+        const postData = JSON.stringify(format.body);
+        
+        const options = {
+          hostname: CONFIG.GLEAN_BASE_URL,
+          port: 443,
+          path: endpoint,
+          method: 'POST',
+          timeout: 2000, // Very short timeout for discovery
+          headers: {
+            'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
 
-      log.start('testing_endpoint_pattern', { endpoint });
-      const response = await makeGleanRequest(options, postData);
-      
-      discoveryResults.workingEndpoints.push({
-        endpoint: endpoint,
-        source: 'pattern_discovery',
-        method: 'POST',
-        response: response
-      });
-      
-      log.success('endpoint_pattern_working', { endpoint });
-    } catch (error) {
+        log.start('testing_endpoint_pattern', { endpoint, format: format.name });
+        const response = await makeGleanRequest(options, postData);
+        
+        discoveryResults.workingEndpoints.push({
+          endpoint: endpoint,
+          source: 'pattern_discovery',
+          method: 'POST',
+          requestFormat: format.name,
+          response: response
+        });
+        
+        log.success('endpoint_pattern_working', { endpoint, format: format.name });
+        endpointWorked = true;
+        break; // Found a working format for this endpoint
+      } catch (error) {
+        log.error('endpoint_pattern_failed', { endpoint, format: format.name, error: error.message });
+        // Continue to next format
+      }
+    }
+    
+    // If no format worked for this endpoint, record it as failed
+    if (!endpointWorked) {
       discoveryResults.testedEndpoints.push({
         endpoint: endpoint,
-        error: error.message,
-        statusCode: error.message.includes('HTTP ') ? error.message.split(' ')[1] : 'unknown'
+        error: 'All request formats failed',
+        statusCode: 'unknown'
       });
-      
-      log.error('endpoint_pattern_failed', { endpoint, error: error.message });
     }
   }
 
