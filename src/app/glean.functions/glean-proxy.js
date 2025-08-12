@@ -504,7 +504,7 @@ exports.main = async (context = {}) => {
   });
 
   try {
-    const { companyName, runDiagnostics } = context.parameters || {};
+    const { companyName, runDiagnostics, testAgentExecution } = context.parameters || {};
 
     // Run diagnostics if requested
     if (runDiagnostics === 'true' || runDiagnostics === true) {
@@ -518,6 +518,43 @@ exports.main = async (context = {}) => {
           message: 'Glean API diagnostics completed'
         }
       };
+    }
+
+    // Test agent execution directly if requested
+    if (testAgentExecution === 'true' || testAgentExecution === true) {
+      log.start('testing_agent_execution_directly');
+      
+      try {
+        const result = await executeGleanAgent(companyName || 'Test Company');
+        
+        return {
+          statusCode: 200,
+          body: {
+            messages: [{
+              role: 'GLEAN_AI',
+              content: [{
+                text: result.response || result.content || result.result || JSON.stringify(result)
+              }]
+            }],
+            metadata: {
+              companyName: companyName || 'Test Company',
+              timestamp: new Date().toISOString(),
+              source: 'direct_agent_test',
+              agentId: CONFIG.GLEAN_AGENT_ID
+            }
+          }
+        };
+      } catch (error) {
+        log.error('direct_agent_test_failed', error);
+        
+        return {
+          statusCode: 500,
+          body: {
+            error: `Direct agent test failed: ${error.message}`,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
     }
 
     if (!CONFIG.GLEAN_API_TOKEN) {

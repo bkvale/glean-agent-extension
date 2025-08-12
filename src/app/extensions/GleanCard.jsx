@@ -210,6 +210,37 @@ const GleanCard = ({ context, actions }) => {
                           {isRunningDiagnostics ? 'Running Diagnostics...' : '🔧 Test Glean API'}
                         </Button>
                       </Box>
+
+                      <Box padding="small">
+                        <Button
+                          variant="secondary"
+                          onClick={async () => {
+                            setIsLoading(true);
+                            setError(null);
+                            try {
+                              const response = await hubspot.serverless('glean-proxy', {
+                                parameters: {
+                                  companyName: 'Test Company',
+                                  testAgentExecution: true
+                                }
+                              });
+                              console.log('Direct agent test response:', response);
+                              if (response.statusCode === 200) {
+                                setResult(response.body);
+                              } else {
+                                setError(`Agent test failed: ${response.body?.error || 'Unknown error'}`);
+                              }
+                            } catch (err) {
+                              setError(`Agent test error: ${err.message}`);
+                            } finally {
+                              setIsLoading(false);
+                            }
+                          }}
+                          disabled={isLoading}
+                        >
+                          🚀 Test Agent Execution
+                        </Button>
+                      </Box>
                     </Box>
                   )}
 
@@ -304,6 +335,22 @@ const GleanCard = ({ context, actions }) => {
                                         • {endpoint.method} {endpoint.endpoint} ({endpoint.source})
                                       </Text>
                                     ))}
+                                  </Box>
+                                )}
+                                
+                                {diagnostics.tests.apiDiscovery.results.testedEndpoints.length > 0 && (
+                                  <Box padding="small">
+                                    <Text variant="small" fontWeight="bold">Failed Endpoints:</Text>
+                                    {diagnostics.tests.apiDiscovery.results.testedEndpoints.slice(0, 5).map((endpoint, index) => (
+                                      <Text key={index} variant="small">
+                                        • {endpoint.method || 'POST'} {endpoint.endpoint}: {endpoint.statusCode || 'unknown'} - {endpoint.error}
+                                      </Text>
+                                    ))}
+                                    {diagnostics.tests.apiDiscovery.results.testedEndpoints.length > 5 && (
+                                      <Text variant="small">
+                                        ... and {diagnostics.tests.apiDiscovery.results.testedEndpoints.length - 5} more
+                                      </Text>
+                                    )}
                                   </Box>
                                 )}
                                 
