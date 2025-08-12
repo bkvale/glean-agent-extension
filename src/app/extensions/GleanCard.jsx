@@ -280,15 +280,49 @@ const GleanCard = ({ context, actions }) => {
                           </Box>
                         )}
 
-                        {diagnostics.tests.agentExecution && (
+                        {diagnostics.tests.apiDiscovery && (
                           <Box padding="small">
-                            <Text variant="small">
-                              {diagnostics.tests.agentExecution.success ? '✅' : '❌'} Agent Execution: 
-                              {diagnostics.tests.agentExecution.message}
+                            <Text variant="small" fontWeight="bold">
+                              {diagnostics.tests.apiDiscovery.success ? '✅' : '❌'} API Discovery: 
+                              {diagnostics.tests.apiDiscovery.message}
                             </Text>
-                            {!diagnostics.tests.agentExecution.success && (
+                            
+                            {diagnostics.tests.apiDiscovery.success && diagnostics.tests.apiDiscovery.results && (
+                              <Box padding="small">
+                                <Text variant="small">
+                                  Working Endpoints: {diagnostics.tests.apiDiscovery.results.workingEndpoints.length}
+                                </Text>
+                                <Text variant="small">
+                                  Tested Endpoints: {diagnostics.tests.apiDiscovery.results.testedEndpoints.length}
+                                </Text>
+                                
+                                {diagnostics.tests.apiDiscovery.results.workingEndpoints.length > 0 && (
+                                  <Box padding="small">
+                                    <Text variant="small" fontWeight="bold">Working Endpoints:</Text>
+                                    {diagnostics.tests.apiDiscovery.results.workingEndpoints.map((endpoint, index) => (
+                                      <Text key={index} variant="small">
+                                        • {endpoint.method} {endpoint.endpoint} ({endpoint.source})
+                                      </Text>
+                                    ))}
+                                  </Box>
+                                )}
+                                
+                                {diagnostics.tests.apiDiscovery.results.agentDetails && (
+                                  <Box padding="small">
+                                    <Text variant="small" fontWeight="bold">Agent Details:</Text>
+                                    <Text variant="small">Name: {diagnostics.tests.apiDiscovery.results.agentDetails.name}</Text>
+                                    <Text variant="small">ID: {diagnostics.tests.apiDiscovery.results.agentDetails.id}</Text>
+                                    {diagnostics.tests.apiDiscovery.results.agentDetails.description && (
+                                      <Text variant="small">Description: {diagnostics.tests.apiDiscovery.results.agentDetails.description}</Text>
+                                    )}
+                                  </Box>
+                                )}
+                              </Box>
+                            )}
+                            
+                            {!diagnostics.tests.apiDiscovery.success && (
                               <Text variant="error">
-                                Error: {diagnostics.tests.agentExecution.error}
+                                Error: {diagnostics.tests.apiDiscovery.error}
                               </Text>
                             )}
                           </Box>

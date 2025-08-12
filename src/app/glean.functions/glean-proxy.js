@@ -100,19 +100,24 @@ async function executeGleanAgent(companyName) {
     query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
   });
 
-  // Try different possible endpoints for agent execution
+  // Try the correct endpoints according to Glean documentation
   const possibleEndpoints = [
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/invoke`
+    '/rest/api/v1/agents/runs/wait',
+    '/rest/api/v1/agents/runs/stream'
   ];
 
   let lastError = null;
   
   for (const endpoint of possibleEndpoints) {
     try {
+      // Include agent_id in the request body as per Glean documentation
+      const requestBody = {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+      };
+      
+      const postData = JSON.stringify(requestBody);
+      
       const options = {
         hostname: CONFIG.GLEAN_BASE_URL,
         port: 443,
@@ -129,7 +134,8 @@ async function executeGleanAgent(companyName) {
       log.http('http_request_outbound', { 
         url: `https://${CONFIG.GLEAN_BASE_URL}${endpoint}`,
         method: 'POST',
-        timeoutMs: options.timeout
+        timeoutMs: options.timeout,
+        requestBody: requestBody
       });
 
       const result = await makeGleanRequest(options, postData);
@@ -295,7 +301,8 @@ async function testGleanConfiguration() {
       success: true,
       message: 'Agent found and accessible',
       agentName: agentResponse.name || 'Unknown',
-      agentId: agentResponse.id || CONFIG.GLEAN_AGENT_ID
+      agentId: agentResponse.id || CONFIG.GLEAN_AGENT_ID,
+      agentDetails: agentResponse // Include full agent details for analysis
     };
     log.success('agent_existence_test_passed');
   } catch (error) {
@@ -307,74 +314,176 @@ async function testGleanConfiguration() {
     log.error('agent_existence_test_failed', error);
   }
 
-  // Test 3: Test agent execution capability with multiple endpoint attempts
+  // Test 3: Comprehensive API endpoint discovery
   try {
-    const postData = JSON.stringify({
-      query: "Test query for agent execution"
-    });
-
-    // Try different possible endpoints
-    const possibleEndpoints = [
-      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
-      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
-      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
-      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`,
-      `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/invoke`
-    ];
-
-    let lastError = null;
+    log.start('testing_api_endpoint_discovery');
     
-    for (const endpoint of possibleEndpoints) {
-      try {
-        const options = {
-          hostname: CONFIG.GLEAN_BASE_URL,
-          port: 443,
-          path: endpoint,
-          method: 'POST',
-          timeout: 2000, // Very short timeout for testing
-          headers: {
-            'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
-          }
-        };
-
-        log.start('testing_agent_execution_endpoint', { endpoint });
-        const agentResponse = await makeGleanRequest(options, postData);
-        
-        diagnostics.tests.agentExecution = {
-          success: true,
-          message: `Agent execution is working via ${endpoint}`,
-          workingEndpoint: endpoint,
-          hasResponse: !!agentResponse.messages || !!agentResponse.response
-        };
-        log.success('agent_execution_test_passed', { endpoint });
-        return; // Exit on first success
-      } catch (error) {
-        lastError = error;
-        log.error('agent_execution_endpoint_failed', { endpoint, error: error.message });
-        continue; // Try next endpoint
-      }
-    }
-
-    // If we get here, all endpoints failed
-    diagnostics.tests.agentExecution = {
-      success: false,
-      error: lastError ? lastError.message : 'All endpoints failed',
-      message: 'Agent execution failed - tried multiple endpoints',
-      attemptedEndpoints: possibleEndpoints
+    const discoveryResults = await discoverAgentExecutionEndpoints();
+    diagnostics.tests.apiDiscovery = {
+      success: true,
+      message: 'API endpoint discovery completed',
+      results: discoveryResults
     };
-    log.error('agent_execution_all_endpoints_failed', { lastError: lastError?.message });
+    log.success('api_discovery_test_passed');
   } catch (error) {
-    diagnostics.tests.agentExecution = {
+    diagnostics.tests.apiDiscovery = {
       success: false,
       error: error.message,
-      message: 'Agent execution test failed unexpectedly'
+      message: 'API endpoint discovery failed'
     };
-    log.error('agent_execution_test_failed', error);
+    log.error('api_discovery_test_failed', error);
   }
 
   return diagnostics;
+}
+
+// Comprehensive API endpoint discovery
+async function discoverAgentExecutionEndpoints() {
+  const discoveryResults = {
+    testedEndpoints: [],
+    workingEndpoints: [],
+    agentDetails: null,
+    apiVersion: null
+  };
+
+  // First, get detailed agent information to understand the API structure
+  try {
+    const agentOptions = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}`,
+      method: 'GET',
+      timeout: 5000,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    const agentResponse = await makeGleanRequest(agentOptions);
+    discoveryResults.agentDetails = agentResponse;
+    
+    // Look for execution-related fields in the agent response
+    if (agentResponse.execution_endpoint) {
+      discoveryResults.workingEndpoints.push({
+        endpoint: agentResponse.execution_endpoint,
+        source: 'agent_details',
+        method: 'POST'
+      });
+    }
+    
+    if (agentResponse.run_endpoint) {
+      discoveryResults.workingEndpoints.push({
+        endpoint: agentResponse.run_endpoint,
+        source: 'agent_details',
+        method: 'POST'
+      });
+    }
+  } catch (error) {
+    log.error('failed_to_get_agent_details', error);
+  }
+
+  // Test the correct endpoints according to Glean documentation
+  const endpointPatterns = [
+    // Correct endpoints from Glean documentation
+    '/rest/api/v1/agents/runs/wait',
+    '/rest/api/v1/agents/runs/stream',
+    
+    // Also test the agent-specific endpoints in case they exist
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/wait`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/runs/stream`,
+    
+    // Test other possible patterns
+    '/rest/api/v1/agents/runs',
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`
+  ];
+
+  const postData = JSON.stringify({
+    agent_id: CONFIG.GLEAN_AGENT_ID,
+    query: "Test query for agent execution"
+  });
+
+  for (const endpoint of endpointPatterns) {
+    try {
+      const options = {
+        hostname: CONFIG.GLEAN_BASE_URL,
+        port: 443,
+        path: endpoint,
+        method: 'POST',
+        timeout: 2000, // Very short timeout for discovery
+        headers: {
+          'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      log.start('testing_endpoint_pattern', { endpoint });
+      const response = await makeGleanRequest(options, postData);
+      
+      discoveryResults.workingEndpoints.push({
+        endpoint: endpoint,
+        source: 'pattern_discovery',
+        method: 'POST',
+        response: response
+      });
+      
+      log.success('endpoint_pattern_working', { endpoint });
+    } catch (error) {
+      discoveryResults.testedEndpoints.push({
+        endpoint: endpoint,
+        error: error.message,
+        statusCode: error.message.includes('HTTP ') ? error.message.split(' ')[1] : 'unknown'
+      });
+      
+      log.error('endpoint_pattern_failed', { endpoint, error: error.message });
+    }
+  }
+
+  // Try GET requests for some endpoints
+  const getEndpoints = [
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/status`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/info`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/details`
+  ];
+
+  for (const endpoint of getEndpoints) {
+    try {
+      const options = {
+        hostname: CONFIG.GLEAN_BASE_URL,
+        port: 443,
+        path: endpoint,
+        method: 'GET',
+        timeout: 2000,
+        headers: {
+          'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      log.start('testing_get_endpoint', { endpoint });
+      const response = await makeGleanRequest(options);
+      
+      discoveryResults.workingEndpoints.push({
+        endpoint: endpoint,
+        source: 'get_discovery',
+        method: 'GET',
+        response: response
+      });
+      
+      log.success('get_endpoint_working', { endpoint });
+    } catch (error) {
+      discoveryResults.testedEndpoints.push({
+        endpoint: endpoint,
+        method: 'GET',
+        error: error.message,
+        statusCode: error.message.includes('HTTP ') ? error.message.split(' ')[1] : 'unknown'
+      });
+    }
+  }
+
+  return discoveryResults;
 }
 
 // Main exports.main function
