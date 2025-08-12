@@ -48,6 +48,7 @@ const GleanCard = ({ context, actions }) => {
       }
 
       console.log('Calling Glean API via HubSpot serverless function for:', companyName);
+      console.log('Async mode enabled:', asyncMode);
 
       const response = await hubspot.serverless('glean-proxy', {
         propertiesToSend: ['name'],
@@ -60,13 +61,15 @@ const GleanCard = ({ context, actions }) => {
       console.log('Serverless function response:', response);
       console.log('Response type:', typeof response);
       console.log('Response keys:', Object.keys(response || {}));
+      console.log('Response statusCode:', response?.statusCode);
+      console.log('Response body:', response?.body);
 
       if (!response) {
         throw new Error('No response from serverless function');
       }
 
       // Check if the serverless function returned an error
-      if (response.statusCode && response.statusCode !== 200) {
+      if (response.statusCode && response.statusCode !== 200 && response.statusCode !== 202) {
         console.error('Serverless function error:', response);
         const errorMessage = response.body?.error || response.body?.message || 'Unknown serverless function error';
         throw new Error(`Serverless function failed: ${errorMessage}`);
