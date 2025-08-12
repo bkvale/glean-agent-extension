@@ -26,7 +26,8 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [asyncMode, setAsyncMode] = useState(true);
+  // Always use async mode since Glean agent is slow
+  const asyncMode = true;
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -173,13 +174,7 @@ const GleanCard = ({ context, actions }) => {
                       
                       <Box padding="small">
                         <Text variant="small">
-                          <input
-                            type="checkbox"
-                            checked={asyncMode}
-                            onChange={(e) => setAsyncMode(e.target.checked)}
-                            style={{ marginRight: '8px' }}
-                          />
-                          Enable async mode (recommended for slow agents)
+                          ⚡ Using async mode for optimal performance
                         </Text>
                       </Box>
                       
