@@ -341,55 +341,35 @@ exports.main = async (context = {}) => {
     
     // Check if we should use async flow for long-running agents
     if (CONFIG.USE_ASYNC_FLOW || asyncMode) {
-      // For now, let's try a synchronous approach to avoid polling issues
-      log.start('sync_flow_start', { companyName });
+      // Start the agent asynchronously and return immediately to avoid timeout
+      log.start('async_flow_start', { companyName });
       
-      try {
-        const data = await makeGleanRequest(companyName);
-        
-        const totalDuration = Date.now() - functionStartTime;
-        
-        log.success('glean_api_success', { 
-          companyName, 
-          duration: totalDuration,
-          dataKeys: Object.keys(data || {}),
-          hasMessages: data?.messages ? Array.isArray(data.messages) : false
+      // Start the agent in the background (this will run but we won't wait for it)
+      makeGleanRequest(companyName)
+        .then(data => {
+          log.success('async_agent_completed', { companyName });
+        })
+        .catch(error => {
+          log.error('async_agent_error', { companyName, error: error.message });
         });
-        
-        const response = {
-          statusCode: 200,
-          body: {
-            ...data,
-            metadata: {
-              duration: totalDuration,
-              timestamp: new Date().toISOString(),
-              companyName
-            }
-          }
-        };
-        
-        log.return('return_to_ui', { 
-          statusCode: response.statusCode,
-          messageCount: data?.messages?.length || 0
-        });
-        
-        return response;
-      } catch (error) {
-        log.error('sync_flow_error', { 
-          companyName, 
-          error: error.message, 
-          stack: error.stack 
-        });
-        
-        return {
-          statusCode: 500,
-          body: {
-            error: `Glean API error: ${error.message}`,
-            companyName,
-            timestamp: new Date().toISOString()
-          }
-        };
-      }
+      
+      const response = {
+        statusCode: 202, // Accepted
+        body: {
+          status: 'started',
+          message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
+          companyName,
+          timestamp: new Date().toISOString(),
+          async: true
+        }
+      };
+      
+      log.return('async_flow_return', { 
+        statusCode: response.statusCode,
+        message: response.body.message
+      });
+      
+      return response;
     }
     
   } catch (error) {
