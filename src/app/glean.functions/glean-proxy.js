@@ -61,17 +61,24 @@ async function makeGleanRequest(options, postData = null) {
           } catch (error) {
             log.error('parse_error', error);
             log.error('raw_response_data', { 
-              responseData: responseData.substring(0, 500),
+              responseData: responseData.substring(0, 1000), // Show more of the response
               responseLength: responseData.length,
               statusCode: res.statusCode,
-              headers: res.headers
+              headers: res.headers,
+              path: options.path
             });
-            reject(new Error(`Invalid JSON response: ${error.message}. Raw response: ${responseData.substring(0, 200)}`));
+            
+            // If it's a short response, it might be an error message
+            if (responseData.length < 200) {
+              reject(new Error(`Invalid JSON response: ${error.message}. Raw response: "${responseData}"`));
+            } else {
+              reject(new Error(`Invalid JSON response: ${error.message}. Raw response (first 200 chars): "${responseData.substring(0, 200)}"`));
+            }
           }
         } else {
           log.error('upstream_error', {
             statusCode: res.statusCode,
-            responseData: responseData.substring(0, 200),
+            responseData: responseData.substring(0, 500), // Show more error data
             path: options.path,
             headers: res.headers
           });
@@ -102,59 +109,70 @@ async function makeGleanRequest(options, postData = null) {
 async function executeGleanAgent(companyName) {
   log.start('execute_glean_agent', { companyName, agentId: CONFIG.GLEAN_AGENT_ID });
   
-  // Since the beta endpoints aren't working, let's try alternative approaches
+  // Use the correct request format based on the API documentation
   const executionAttempts = [
-    // Attempt 1: Try using search with execution flag
+    // Attempt 1: Try streaming endpoint with input format
     {
-      name: 'search_with_execution',
-      endpoint: '/rest/api/v1/agents/search',
-      method: 'POST',
-      body: {
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        execute: true,
-        run: true
-      }
-    },
-    // Attempt 2: Try using search with different parameters
-    {
-      name: 'search_with_run',
-      endpoint: '/rest/api/v1/agents/search',
-      method: 'POST',
-      body: {
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        run_agent: true
-      }
-    },
-    // Attempt 3: Try using the beta endpoints anyway (in case they work now)
-    {
-      name: 'beta_wait_endpoint',
-      endpoint: '/rest/api/v1/agents/runs/wait',
-      method: 'POST',
-      body: {
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
-      }
-    },
-    // Attempt 4: Try using the beta streaming endpoint
-    {
-      name: 'beta_stream_endpoint',
+      name: 'streaming_with_input',
       endpoint: '/rest/api/v1/agents/runs/stream',
       method: 'POST',
       body: {
         agent_id: CONFIG.GLEAN_AGENT_ID,
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        input: {
+          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        }
       }
     },
-    // Attempt 5: Try using a generic execution endpoint
+    // Attempt 2: Try streaming endpoint with messages format
     {
-      name: 'generic_execution',
-      endpoint: '/rest/api/v1/execute',
+      name: 'streaming_with_messages',
+      endpoint: '/rest/api/v1/agents/runs/stream',
       method: 'POST',
       body: {
         agent_id: CONFIG.GLEAN_AGENT_ID,
-        query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        messages: [
+          {
+            role: "USER",
+            content: [
+              {
+                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+                type: "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // Attempt 3: Try wait endpoint with input format
+    {
+      name: 'wait_with_input',
+      endpoint: '/rest/api/v1/agents/runs/wait',
+      method: 'POST',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        input: {
+          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+        }
+      }
+    },
+    // Attempt 4: Try wait endpoint with messages format
+    {
+      name: 'wait_with_messages',
+      endpoint: '/rest/api/v1/agents/runs/wait',
+      method: 'POST',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        messages: [
+          {
+            role: "USER",
+            content: [
+              {
+                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+                type: "text"
+              }
+            ]
+          }
+        ]
       }
     }
   ];
@@ -537,6 +555,44 @@ async function discoverAgentExecutionEndpoints() {
       } catch (error) {
         log.error('search_endpoint_failed', { endpoint, error: error.message });
       }
+    } else if (endpoint.includes('/rest/api/v1/agents/runs')) {
+      // Special handling for beta endpoints - try with minimal data
+      try {
+        const minimalBody = {
+          agent_id: CONFIG.GLEAN_AGENT_ID
+        };
+        
+        const postData = JSON.stringify(minimalBody);
+        
+        const options = {
+          hostname: CONFIG.GLEAN_BASE_URL,
+          port: 443,
+          path: endpoint,
+          method: 'POST',
+          timeout: 3000, // Give beta endpoints a bit more time
+          headers: {
+            'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+
+        log.start('testing_beta_endpoint', { endpoint });
+        const response = await makeGleanRequest(options, postData);
+        
+        discoveryResults.workingEndpoints.push({
+          endpoint: endpoint,
+          source: 'beta_discovery',
+          method: 'POST',
+          requestFormat: 'minimal_beta_format',
+          response: response
+        });
+        
+        log.success('beta_endpoint_working', { endpoint });
+        endpointWorked = true;
+      } catch (error) {
+        log.error('beta_endpoint_failed', { endpoint, error: error.message });
+      }
     } else {
       // Regular endpoint testing with multiple formats
       for (const format of requestFormats) {
@@ -587,12 +643,16 @@ async function discoverAgentExecutionEndpoints() {
     }
   }
 
-  // Try GET requests for some endpoints
+  // Test GET requests for some endpoints
   const getEndpoints = [
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/status`,
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/info`,
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/details`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/schemas`
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/schemas`,
+    // Test if beta endpoints exist at all
+    '/rest/api/v1/agents/runs',
+    '/rest/api/v1/agents/runs/wait',
+    '/rest/api/v1/agents/runs/stream'
   ];
 
   for (const endpoint of getEndpoints) {
