@@ -1,179 +1,157 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
-// Content persistence hooks (no-op for now)
-const savePlan = async (companyId, content, metadata) => {
-  // TODO: Implement storage strategy
-  // Preferred: custom object associated to Company for run history/versioning
-  // Fallback: long-text Company property
-  console.log('savePlan called:', { companyId, contentLength: content?.length, metadata });
-  return { success: true, timestamp: new Date().toISOString() };
+// Save plan to HubSpot (keeping this for manual save functionality)
+const savePlan = async (actions, planContent, companyName) => {
+  try {
+    // For now, we'll save to a custom property if it exists
+    // In a real implementation, you might want to create a custom object or use a long text property
+    console.log('Saving plan to HubSpot:', { planContent, companyName });
+    
+    // This is a placeholder - you'd need to implement actual saving logic
+    // based on your HubSpot setup (custom objects, properties, etc.)
+    return true;
+  } catch (error) {
+    console.error('Error saving plan:', error);
+    return false;
+  }
 };
 
-const getLatestPlan = async (companyId) => {
-  // TODO: Implement retrieval strategy
-  console.log('getLatestPlan called:', { companyId });
-  return null;
+// Get the latest plan (placeholder)
+const getLatestPlan = async (actions, companyName) => {
+  try {
+    // This would fetch the latest saved plan for the company
+    // Implementation depends on how you're storing the data
+    return null;
+  } catch (error) {
+    console.error('Error getting latest plan:', error);
+    return null;
+  }
 };
 
 const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [diagnostics, setDiagnostics] = useState(null);
-  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [isGleanReady, setIsGleanReady] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [chatHandle, setChatHandle] = useState(null);
+  const gleanContainerRef = useRef(null);
 
-  const runDiagnostics = async () => {
-    setIsRunningDiagnostics(true);
-    setError(null);
-    setDiagnostics(null);
-
-    try {
-      console.log('Running Glean API diagnostics...');
-
-      const response = await hubspot.serverless('glean-proxy', {
-        parameters: {
-          runDiagnostics: true
-        }
-      });
-
-      console.log('Diagnostics response:', response);
-
-      if (response.statusCode === 200 && response.body.diagnostics) {
-        setDiagnostics(response.body.diagnostics);
-      } else {
-        throw new Error('Failed to run diagnostics');
+  // Get company name from HubSpot context
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      try {
+        const properties = await actions.fetchCrmObjectProperties(['name']);
+        setCompanyName(properties.name || 'Unknown Company');
+      } catch (error) {
+        console.error('Error fetching company name:', error);
+        setCompanyName('Unknown Company');
       }
-    } catch (err) {
-      console.error('Error running diagnostics:', err);
-      setError(`Diagnostic error: ${err.message}`);
-    } finally {
-      setIsRunningDiagnostics(false);
-    }
-  };
+    };
+    
+    fetchCompanyName();
+  }, [actions]);
 
-  const runStrategicAccountPlan = async () => {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      let companyName = 'Unknown Company';
-      if (actions && actions.fetchCrmObjectProperties) {
-        try {
-          const companyProperties = await actions.fetchCrmObjectProperties(['name']);
-          companyName = companyProperties.name || `Company ID: ${context.crm?.objectId}`;
-        } catch (error) {
-          console.log('Could not fetch company name, using fallback');
-          companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
-        }
-      } else {
-        companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
-      }
-
-      console.log('Starting Glean agent execution for:', companyName);
-
-      const response = await hubspot.serverless('glean-proxy', {
-        propertiesToSend: ['name'],
-        parameters: {
-          companyName: companyName
-        }
-      });
-
-      console.log('Serverless function response:', response);
-      console.log('Response type:', typeof response);
-      console.log('Response keys:', Object.keys(response || {}));
-      console.log('Response statusCode:', response?.statusCode);
-      console.log('Response body:', response?.body);
-
-      if (!response) {
-        throw new Error('No response from serverless function');
-      }
-
-      // Check if the serverless function returned an error
-      if (response.statusCode && response.statusCode !== 200) {
-        console.error('Serverless function error:', response);
-        const errorMessage = response.body?.error || response.body?.message || 'Unknown serverless function error';
-        throw new Error(`Serverless function failed: ${errorMessage}`);
-      }
-
-      // Extract the response data
-      const gleanData = response.body || response;
-      
-      console.log('Glean data after extraction:', gleanData);
-      console.log('Glean data type:', typeof gleanData);
-      console.log('Glean data keys:', Object.keys(gleanData || {}));
-
-      // Add validation for response structure
-      if (!gleanData || typeof gleanData !== 'object') {
-        console.error('Glean data is not an object:', gleanData);
-        throw new Error('Invalid response structure: gleanData is not an object');
-      }
-
-      // Handle successful response
-      if (response.statusCode === 200 && gleanData.messages) {
-        console.log('Strategic plan generated successfully:', gleanData);
-        
-        // Save the plan to persistent storage
-        if (gleanData.messages && Array.isArray(gleanData.messages)) {
-          const companyId = context.crm?.objectId;
-          const planContent = gleanData.messages
-            .map(msg => msg.content?.map(c => c.text).join(' '))
-            .join('\n\n');
-          
-          try {
-            await savePlan(companyId, planContent, {
-              timestamp: new Date().toISOString(),
-              companyName,
-              source: gleanData.metadata?.source || 'unknown',
-              agentId: gleanData.metadata?.agentId
-            });
-          } catch (saveError) {
-            console.warn('Failed to save plan:', saveError);
-            // Don't fail the UI if save fails
-          }
-        }
-        
-        setResult(gleanData);
+  // Load Glean Web SDK
+  useEffect(() => {
+    const loadGleanSDK = () => {
+      // Check if Glean SDK is already loaded
+      if (window.GleanWebSDK) {
+        setIsGleanReady(true);
         return;
       }
 
-      // Handle unexpected response format
-      console.error('Unexpected response format:', gleanData);
-      setResult({
-        error: true,
-        message: 'Received response from Glean but it was in an unexpected format. Please try again.',
-        rawData: gleanData
-      });
+      // Load the Glean Web SDK script
+      const script = document.createElement('script');
+      script.src = 'https://trace3-be.glean.com/embedded-search-latest.min.js';
+      script.defer = true;
       
-    } catch (err) {
-      console.error('Error running Glean agent:', err);
-      console.error('Error type:', err.name);
-      console.error('Error stack:', err.stack);
+      script.onload = () => {
+        // Listen for Glean ready event
+        window.addEventListener('glean:ready', () => {
+          setIsGleanReady(true);
+        });
+        
+        // If already ready, set immediately
+        if (window.GleanWebSDK) {
+          setIsGleanReady(true);
+        }
+      };
+      
+      script.onerror = (error) => {
+        console.error('Failed to load Glean Web SDK:', error);
+      };
+      
+      document.head.appendChild(script);
+    };
 
-      // Handle categorized errors from serverless function
-      if (err.message.includes('Serverless function failed:')) {
-        const errorBody = err.message.replace('Serverless function failed: ', '');
-        setError(errorBody);
-      } else if (err.message.includes('AGENT_TIMEOUT') || err.message.includes('STREAM_TIMEOUT')) {
-        setError(`The Glean agent is taking longer than expected to respond (exceeded HubSpot's timeout limits). This is a known compatibility issue between long-running AI agents and HubSpot's serverless function constraints. The system automatically fell back to using Glean's chat API instead.`);
-      } else if (err.message.includes('AUTH_ERROR')) {
-        setError(`Authentication error: The Glean API token may not have the required 'agents' scope permissions. Please contact your Glean administrator to ensure the token has access to execute agents.`);
-      } else if (err.message.includes('AGENT_NOT_FOUND')) {
-        setError(`Agent not found: The specified Glean agent ID does not exist or is not accessible. This could be due to an incorrect agent ID or insufficient permissions. The system automatically fell back to using Glean's chat API instead.`);
-      } else if (err.message.includes('AGENT_API_FAILED')) {
-        setError(`Glean agent API failed: Unable to execute the pre-built agent. This could be due to API configuration issues or the agent being temporarily unavailable. The system automatically fell back to using Glean's chat API instead.`);
-      } else if (err.message.includes('timeout')) {
-        setError(`The Glean agent is taking longer than expected to respond. This might be due to network issues or the agent being busy. The system automatically fell back to using Glean's chat API instead.`);
-      } else if (err.message.includes('Failed to fetch')) {
-        setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
-      } else if (err.message.includes('Bearer token')) {
-        setError(err.message);
-      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
-      } else {
-        setError(`Error: ${err.message}`);
+    loadGleanSDK();
+  }, []);
+
+  // Initialize Glean chat when ready
+  useEffect(() => {
+    if (isGleanReady && gleanContainerRef.current && companyName && !chatHandle) {
+      try {
+        const handle = window.GleanWebSDK.renderChat(gleanContainerRef.current, {
+          agentId: "5057a8a588c649d6b1231d648a9167c8", // T3 Marketing: Strategic Account Plan Agent
+          initialMessage: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+          backend: "https://trace3-be.glean.com/",
+          landingPage: "chat",
+          authMethod: "sso",
+          themeVariant: "auto",
+          customizations: {
+            features: {
+              agentLibrary: false,      // Focus on our specific agent
+              applicationLibrary: false,
+              createPrompt: false,      // Simplify UI
+              promptLibrary: false,
+              chatMenu: true,           // Keep chat history
+              chatSettings: true,       // Keep settings
+              clearChat: true,          // Allow clearing chat
+              feedback: true,           // Keep feedback
+              newChatButton: true       // Allow new chats
+            },
+            container: {
+              border: "1px solid #e1e5e9",
+              borderRadius: 8,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              horizontalMargin: 0,
+              verticalMargin: 16
+            }
+          }
+        });
+        
+        setChatHandle(handle);
+        
+        // Listen for chat events
+        handle.on("chat:id_update", (event) => {
+          console.log("Chat updated:", event.chatId);
+        });
+        
+        // Listen for page view events
+        handle.on("chat:page_view", (event) => {
+          console.log("Chat page viewed");
+        });
+        
+      } catch (error) {
+        console.error('Error initializing Glean chat:', error);
       }
+    }
+  }, [isGleanReady, companyName, chatHandle]);
+
+  const handleSaveToHubSpot = async () => {
+    setIsLoading(true);
+    try {
+      // This would capture the chat content and save to HubSpot
+      // For now, we'll show a placeholder message
+      console.log('Save to HubSpot functionality would be implemented here');
+      
+      // You could implement this by:
+      // 1. Capturing the chat content from the iframe
+      // 2. Using the existing serverless function to save to CRM fields
+      // 3. Or creating a new serverless function for saving
+      
+    } catch (error) {
+      console.error('Error saving to HubSpot:', error);
     } finally {
       setIsLoading(false);
     }
@@ -182,246 +160,62 @@ const GleanCard = ({ context, actions }) => {
   return (
     <Box padding="medium">
       <Text variant="h3">Strategic Account Plan</Text>
-
-                        {!result && !isLoading && !error && !diagnostics && (
-                    <Box padding="small">
-                      <Text>Generate Strategic Account Plan for this company using Glean AI Agent:</Text>
-
-                      <Box padding="small">
-                        <Text variant="small">
-                          🤖 Using Glean AI Agent to generate strategic insights
-                        </Text>
-                      </Box>
-
-                      <Button
-                        variant="primary"
-                        onClick={runStrategicAccountPlan}
-                        disabled={isLoading}
-                      >
-                        Generate Plan
-                      </Button>
-
-                      <Box padding="small">
-                        <Button
-                          variant="secondary"
-                          onClick={runDiagnostics}
-                          disabled={isRunningDiagnostics}
-                        >
-                          {isRunningDiagnostics ? 'Running Diagnostics...' : '🔧 Test Glean API'}
-                        </Button>
-                      </Box>
-
-                      <Box padding="small">
-                        <Button
-                          variant="secondary"
-                          onClick={async () => {
-                            setIsLoading(true);
-                            setError(null);
-                            try {
-                              const response = await hubspot.serverless('glean-proxy', {
-                                parameters: {
-                                  companyName: 'Test Company',
-                                  testAgentExecution: true
-                                }
-                              });
-                              console.log('Direct agent test response:', response);
-                              if (response.statusCode === 200) {
-                                setResult(response.body);
-                              } else {
-                                setError(`Agent test failed: ${response.body?.error || 'Unknown error'}`);
-                              }
-                            } catch (err) {
-                              setError(`Agent test error: ${err.message}`);
-                            } finally {
-                              setIsLoading(false);
-                            }
-                          }}
-                          disabled={isLoading}
-                        >
-                          🚀 Test Agent Execution
-                        </Button>
-                      </Box>
-                    </Box>
-                  )}
-
-      {isLoading && (
+      
+      {!isGleanReady && (
         <Box padding="small">
-          <Text>🤖 Running Glean AI Agent to generate strategic plan...</Text>
+          <Text>Loading Glean AI Agent...</Text>
         </Box>
       )}
-
-                        {error && (
-                    <Box padding="small">
-                      <Text variant="error">Error: {error}</Text>
-                      <Button
-                        variant="secondary"
-                        onClick={runStrategicAccountPlan}
-                      >
-                        Try Again
-                      </Button>
-                    </Box>
-                  )}
-
-                  {diagnostics && (
-                    <Box padding="small">
-                      <Text variant="h4">🔧 Glean API Diagnostics</Text>
-                      
-                      <Box padding="small">
-                        <Text variant="small" fontWeight="bold">Configuration:</Text>
-                        <Text variant="small">Instance: {diagnostics.config.instance}</Text>
-                        <Text variant="small">Base URL: {diagnostics.config.baseUrl}</Text>
-                        <Text variant="small">Agent ID: {diagnostics.config.agentId}</Text>
-                        <Text variant="small">Has Token: {diagnostics.config.hasToken ? '✅ Yes' : '❌ No'}</Text>
-                      </Box>
-
-                      <Box padding="small">
-                        <Text variant="small" fontWeight="bold">Test Results:</Text>
-                        
-                        {diagnostics.tests.basicConnectivity && (
-                          <Box padding="small">
-                            <Text variant="small">
-                              {diagnostics.tests.basicConnectivity.success ? '✅' : '❌'} Basic Connectivity: 
-                              {diagnostics.tests.basicConnectivity.message}
-                              {diagnostics.tests.basicConnectivity.agentsCount && 
-                                ` (${diagnostics.tests.basicConnectivity.agentsCount} agents found)`
-                              }
-                            </Text>
-                            {!diagnostics.tests.basicConnectivity.success && (
-                              <Text variant="error">
-                                Error: {diagnostics.tests.basicConnectivity.error}
-                              </Text>
-                            )}
-                          </Box>
-                        )}
-
-                        {diagnostics.tests.agentExists && (
-                          <Box padding="small">
-                            <Text variant="small">
-                              {diagnostics.tests.agentExists.success ? '✅' : '❌'} Agent Exists: 
-                              {diagnostics.tests.agentExists.message}
-                              {diagnostics.tests.agentExists.agentName && 
-                                ` (${diagnostics.tests.agentExists.agentName})`
-                              }
-                            </Text>
-                            {!diagnostics.tests.agentExists.success && (
-                              <Text variant="error">
-                                Error: {diagnostics.tests.agentExists.error}
-                              </Text>
-                            )}
-                          </Box>
-                        )}
-
-                        {diagnostics.tests.apiDiscovery && (
-                          <Box padding="small">
-                            <Text variant="small" fontWeight="bold">
-                              {diagnostics.tests.apiDiscovery.success ? '✅' : '❌'} API Discovery: 
-                              {diagnostics.tests.apiDiscovery.message}
-                            </Text>
-                            
-                            {diagnostics.tests.apiDiscovery.success && diagnostics.tests.apiDiscovery.results && (
-                              <Box padding="small">
-                                <Text variant="small">
-                                  Working Endpoints: {diagnostics.tests.apiDiscovery.results.workingEndpoints.length}
-                                </Text>
-                                <Text variant="small">
-                                  Tested Endpoints: {diagnostics.tests.apiDiscovery.results.testedEndpoints.length}
-                                </Text>
-                                
-                                {diagnostics.tests.apiDiscovery.results.workingEndpoints.length > 0 && (
-                                  <Box padding="small">
-                                    <Text variant="small" fontWeight="bold">Working Endpoints:</Text>
-                                    {diagnostics.tests.apiDiscovery.results.workingEndpoints.map((endpoint, index) => (
-                                      <Text key={index} variant="small">
-                                        • {endpoint.method} {endpoint.endpoint} ({endpoint.source})
-                                      </Text>
-                                    ))}
-                                  </Box>
-                                )}
-                                
-                                {diagnostics.tests.apiDiscovery.results.testedEndpoints.length > 0 && (
-                                  <Box padding="small">
-                                    <Text variant="small" fontWeight="bold">Failed Endpoints:</Text>
-                                    {diagnostics.tests.apiDiscovery.results.testedEndpoints.slice(0, 5).map((endpoint, index) => (
-                                      <Text key={index} variant="small">
-                                        • {endpoint.method || 'POST'} {endpoint.endpoint}: {endpoint.statusCode || 'unknown'} - {endpoint.error}
-                                      </Text>
-                                    ))}
-                                    {diagnostics.tests.apiDiscovery.results.testedEndpoints.length > 5 && (
-                                      <Text variant="small">
-                                        ... and {diagnostics.tests.apiDiscovery.results.testedEndpoints.length - 5} more
-                                      </Text>
-                                    )}
-                                  </Box>
-                                )}
-                                
-                                {diagnostics.tests.apiDiscovery.results.agentDetails && (
-                                  <Box padding="small">
-                                    <Text variant="small" fontWeight="bold">Agent Details:</Text>
-                                    <Text variant="small">Name: {diagnostics.tests.apiDiscovery.results.agentDetails.name}</Text>
-                                    <Text variant="small">ID: {diagnostics.tests.apiDiscovery.results.agentDetails.id}</Text>
-                                    {diagnostics.tests.apiDiscovery.results.agentDetails.description && (
-                                      <Text variant="small">Description: {diagnostics.tests.apiDiscovery.results.agentDetails.description}</Text>
-                                    )}
-                                  </Box>
-                                )}
-                              </Box>
-                            )}
-                            
-                            {!diagnostics.tests.apiDiscovery.success && (
-                              <Text variant="error">
-                                Error: {diagnostics.tests.apiDiscovery.error}
-                              </Text>
-                            )}
-                          </Box>
-                        )}
-                      </Box>
-
-                      <Box padding="small">
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            setDiagnostics(null);
-                            setError(null);
-                          }}
-                        >
-                          Back to Generate Plan
-                        </Button>
-                      </Box>
-                    </Box>
-                  )}
-
-      {result && !result.error && (
+      
+      {isGleanReady && companyName && (
         <Box padding="small">
-          <Text variant="success">✅ Strategic Account Plan Generated!</Text>
-          <Text variant="small">Company: {result.metadata?.companyName || 'Unknown'}</Text>
-          {result.metadata?.source && (
-            <Text variant="small">Source: {result.metadata.source}</Text>
-          )}
+          <Text variant="small">
+            🤖 Glean AI Agent ready for {companyName}
+          </Text>
           
-          {result.messages && Array.isArray(result.messages) && result.messages.map((message, index) => (
-            <Box key={index} padding="small">
-              <Text variant="small" fontWeight="bold">
-                {message.role === 'GLEAN_AI' ? 'AI Analysis:' : message.role}:
-              </Text>
-              {message.content && Array.isArray(message.content) && message.content.map((content, contentIndex) => (
-                <Text key={contentIndex} variant="small">
-                  {content.text}
-                </Text>
-              ))}
-            </Box>
-          ))}
+          <Box padding="small">
+            <Text variant="small">
+              The agent will automatically start generating a strategic account plan. 
+              You can interact with it directly in the chat interface below.
+            </Text>
+          </Box>
           
-          <Button
-            variant="secondary"
-            onClick={runStrategicAccountPlan}
-          >
-            Generate New Plan
-          </Button>
+          {/* Glean Chat Container */}
+          <Box 
+            ref={gleanContainerRef}
+            style={{
+              position: 'relative',
+              display: 'block',
+              height: '600px',
+              width: '100%',
+              minHeight: '400px'
+            }}
+          />
+          
+          {/* Save to HubSpot Button */}
+          <Box padding="small">
+            <Button
+              variant="secondary"
+              onClick={handleSaveToHubSpot}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Saving...' : '💾 Save Plan to HubSpot'}
+            </Button>
+            <Text variant="small">
+              Click this button to save the generated plan to HubSpot CRM fields
+            </Text>
+          </Box>
+        </Box>
+      )}
+      
+      {isGleanReady && !companyName && (
+        <Box padding="small">
+          <Text variant="error">Unable to load company information</Text>
         </Box>
       )}
     </Box>
   );
-}; 
+};
 
 export default GleanCard;
 
