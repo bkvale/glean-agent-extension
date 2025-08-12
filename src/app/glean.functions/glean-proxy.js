@@ -9,7 +9,7 @@ const CONFIG = {
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s default, well under HubSpot's 10s limit
   MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1,
-  USE_ASYNC_FLOW: process.env.USE_ASYNC_FLOW === 'true' || false
+  USE_ASYNC_FLOW: process.env.USE_ASYNC_FLOW === 'true' || true
 };
 
 // High-signal diagnostic logging

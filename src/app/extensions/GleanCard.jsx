@@ -26,7 +26,7 @@ const GleanCard = ({ context, actions }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [asyncMode, setAsyncMode] = useState(false);
+  const [asyncMode, setAsyncMode] = useState(true);
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
@@ -176,7 +176,7 @@ const GleanCard = ({ context, actions }) => {
                             onChange={(e) => setAsyncMode(e.target.checked)}
                             style={{ marginRight: '8px' }}
                           />
-                          Enable async mode (for agents that take 30+ seconds)
+                          Enable async mode (recommended for slow agents)
                         </Text>
                       </Box>
                       
