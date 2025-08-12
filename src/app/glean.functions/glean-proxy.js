@@ -269,69 +269,68 @@ exports.main = async (context = {}) => {
     if (checkStatus) {
       log.start('status_check', { companyName, attempt });
       
-      const jobKey = `job_${companyName}`;
-      const job = jobStore.get(jobKey);
-      
-      if (!job) {
-        log.error('job_not_found', { companyName, attempt });
-        return {
-          statusCode: 404,
-          body: {
-            error: 'Job not found',
-            companyName,
-            timestamp: new Date().toISOString(),
-            attempt
-          }
-        };
-      }
-      
-      // Check if job is completed
-      if (job.status === 'completed') {
-        log.success('job_completed', { companyName, attempt });
-        jobStore.delete(jobKey); // Clean up
-        return {
-          statusCode: 200,
-          body: {
-            ...job.result,
-            metadata: {
-              timestamp: new Date().toISOString(),
-              companyName,
-              statusCheck: true,
-              attempt,
-              jobDuration: Date.now() - job.startTime
+      // Since serverless functions don't maintain state, we'll try to get the result directly
+      // If it's still running, it will timeout and we'll return 202
+      try {
+        const data = await makeGleanRequest(companyName);
+        
+        if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          // Job completed successfully
+          log.success('status_check_success', { companyName, attempt });
+          return {
+            statusCode: 200,
+            body: {
+              ...data,
+              metadata: {
+                timestamp: new Date().toISOString(),
+                companyName,
+                statusCheck: true,
+                attempt
+              }
             }
-          }
-        };
-      }
-      
-      // Check if job failed
-      if (job.status === 'failed') {
-        log.error('job_failed', { companyName, attempt, error: job.error });
-        jobStore.delete(jobKey); // Clean up
-        return {
-          statusCode: 500,
-          body: {
-            error: job.error,
-            companyName,
-            timestamp: new Date().toISOString(),
-            attempt
-          }
-        };
-      }
-      
-      // Job is still running
-      log.start('job_still_running', { companyName, attempt, jobAge: Date.now() - job.startTime });
-      return {
-        statusCode: 202,
-        body: {
-          status: 'running',
-          message: 'Job is still running',
-          companyName,
-          timestamp: new Date().toISOString(),
-          attempt,
-          jobAge: Date.now() - job.startTime
+          };
+        } else {
+          // No results yet, still running
+          log.start('status_check_running', { companyName, attempt });
+          return {
+            statusCode: 202,
+            body: {
+              status: 'running',
+              message: 'Job is still running',
+              companyName,
+              timestamp: new Date().toISOString(),
+              attempt
+            }
+          };
         }
-      };
+      } catch (error) {
+        // If it's a timeout or the agent is still running, continue polling
+        if (error.message.includes('timeout') || error.message.includes('HTTP 5')) {
+          log.start('status_check_running', { companyName, attempt, error: error.message });
+          return {
+            statusCode: 202,
+            body: {
+              status: 'running',
+              message: 'Job is still running',
+              companyName,
+              timestamp: new Date().toISOString(),
+              attempt
+            }
+          };
+        } else {
+          // Other error
+          log.error('status_check_error', error);
+          return {
+            statusCode: 500,
+            body: {
+              error: error.message,
+              companyName,
+              timestamp: new Date().toISOString(),
+              attempt
+            }
+          };
+        }
+      }
     }
     
     // Check if we should use async flow for long-running agents
@@ -339,28 +338,13 @@ exports.main = async (context = {}) => {
       // Start the agent asynchronously and return immediately
       log.start('async_flow_start', { companyName });
       
-      const jobKey = `job_${companyName}`;
-      const job = {
-        status: 'running',
-        startTime: Date.now(),
-        companyName
-      };
-      
-      jobStore.set(jobKey, job);
-      
       // Start the agent (this will run in background)
       makeGleanRequest(companyName)
         .then(data => {
           log.success('async_agent_completed', { companyName });
-          job.status = 'completed';
-          job.result = data;
-          jobStore.set(jobKey, job);
         })
         .catch(error => {
           log.error('async_agent_error', { companyName, error: error.message });
-          job.status = 'failed';
-          job.error = error.message;
-          jobStore.set(jobKey, job);
         });
       
       const response = {
@@ -370,8 +354,7 @@ exports.main = async (context = {}) => {
           message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
           companyName,
           timestamp: new Date().toISOString(),
-          async: true,
-          jobId: jobKey
+          async: true
         }
       };
       
