@@ -4,11 +4,18 @@
   "description": "HubSpot UI Extension for displaying Glean AI Agent insights in company records",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "hs project dev",
+    "dev:card": "hs project dev --branch=feature/crm-card-agent-run",
+    "dev:iframe": "hs project dev --branch=feature/iframe-embed-prototype",
+    "build": "hs project build",
+    "deploy": "hs project deploy",
     "upload": "hs project upload",
     "lint": "eslint src/",
-    "format": "prettier --write src/"
+    "typecheck": "echo 'TypeScript checking not configured'",
+    "format": "prettier --write src/",
+    "clean": "rm -rf dist/ build/",
+    "smoke-test": "node test-glean-api.js 'Test Company'",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "hubspot",
@@ -28,6 +35,8 @@
   "devDependencies": {
     "@hubspot/cli": "^7.5.4",
     "eslint": "^8.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "prettier": "^3.0.0"
   }
 }

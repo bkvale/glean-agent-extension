@@ -1,193 +1,168 @@
-# Glean Agent HubSpot CRM Extension
+# Glean Agent Extension for HubSpot
 
-A HubSpot UI Extension that embeds Glean AI agents directly into company records, enabling strategic account planning and analysis within the CRM.
+This repository contains two different approaches for integrating Glean AI agents with HubSpot CRM, implemented as separate feature branches for review and analysis.
 
-## 🎯 Current Status: **Production Ready with Timeout Handling**
+## 🏗️ Architecture Overview
 
-### ✅ What's Working
-- **UI Extension**: Successfully deployed and rendering in HubSpot CRM
-- **Serverless Function**: Robust proxy with comprehensive error handling
-- **Glean Integration**: Direct API calls with timeout and retry logic
-- **Error Handling**: Categorized errors with user-friendly messages
-- **Logging**: High-signal diagnostics for debugging
+### Iframe Approach (`feature/iframe-embed-prototype`)
+- Attempts to embed Glean agent directly in HubSpot iframe modal
+- **Status**: Blocked by security policies (X-Frame-Options: DENY, CORS)
+- **Purpose**: Demonstrates why iframe embedding isn't viable for complex web apps
 
-### ⚠️ Known Limitations
-- **Timeout Constraint**: Glean agents that take >8 seconds will timeout (HubSpot serverless limit)
-- **Synchronous Only**: Currently uses blocking `/wait` endpoint
-- **No Persistence**: Results not stored between sessions
-
-## 🏗️ Architecture
-
-### Current Implementation
-```
-HubSpot CRM Card → Serverless Function → Glean API (/wait)
-```
-
-### Future Architecture Options
-- **Branch A**: Async flow with polling (`USE_ASYNC_FLOW=true`)
-- **Branch B**: External worker service (`USE_EXTERNAL_WORKER=true`)
+### Serverless Approach (`feature/crm-card-agent-run`)
+- Uses HubSpot serverless functions to call Glean API
+- **Status**: Works up to HubSpot's ~10-15 second timeout limit
+- **Purpose**: Shows viable path for programmatic agent execution
 
 ## 🚀 Quick Start
 
-### 1. Environment Setup
+### Prerequisites
+- Node.js 16+ and npm
+- HubSpot Developer Account
+- Glean API access with agent permissions
+
+### Environment Setup
+1. Copy `env.example` to `.env`:
+   ```bash
+   cp env.example .env
+   ```
+
+2. Fill in your credentials:
+   ```env
+   GLEAN_API_TOKEN=your_actual_token
+   GLEAN_INSTANCE=your_instance_name
+   GLEAN_AGENT_ID=your_agent_id
+   HUBSPOT_PRIVATE_APP_TOKEN=your_hubspot_token
+   ```
+
+### Running Each Approach
+
+#### Iframe Prototype
 ```bash
-# Required environment variables
-export GLEAN_BASE_URL="trace3-be.glean.com"
-export GLEAN_AGENT_ID="5057a8a588c649d6b1231d648a9167c8"
-export GLEAN_API_TOKEN="your_token_here"
-export GLEAN_TIMEOUT_MS="8000"  # 8 seconds (HubSpot limit)
-export GLEAN_MAX_RETRIES="1"
+git checkout feature/iframe-embed-prototype
+npm install
+npm run dev:iframe
 ```
 
-### 2. Local Testing
+#### CRM Card Agent Runner
 ```bash
-# Test Glean API directly
-node test-glean-api.js "Company Name"
-
-# Test with custom timeout
-node test-glean-api.js "Company Name" --timeoutMs=12000
+git checkout feature/crm-card-agent-run
+npm install
+npm run dev:card
 ```
 
-### 3. Deploy to HubSpot
-```bash
-# Deploy via GitHub integration (recommended)
-git add . && git commit -m "Update" && git push
+## 📋 Test Steps
 
-# Or deploy via CLI (if configured)
-npx hs project deploy
+### Iframe Prototype Testing
+1. Navigate to a company record in HubSpot
+2. Look for "Strategic Account Plan - Iframe Prototype" card
+3. Click "Try Iframe Embed"
+4. **Expected**: Modal opens but Glean agent is blocked by security policies
+5. Check browser console for CORS/X-Frame-Options errors
+
+### CRM Card Testing
+1. Navigate to a company record in HubSpot
+2. Look for "Strategic Account Plan - CRM Card" card
+3. Click "Test Glean API Connection" first
+4. **Expected**: Connection test succeeds
+5. Click "Run Strategic Account Plan"
+6. **Expected**: Agent starts but may timeout after 10-15 seconds
+
+## 🚨 Known Limitations
+
+### Iframe Approach
+- **X-Frame-Options: DENY** - Glean blocks iframe embedding
+- **CORS Policy** - Internal API calls to `apps-be.glean.com` are blocked
+- **Content Security Policy** - Additional browser security restrictions
+- **Production Impact**: Cannot be used in production without vendor changes
+
+### Serverless Approach
+- **Timeout Limit** - HubSpot serverless functions timeout at ~10-15 seconds
+- **Agent Duration** - Glean agents typically take 60-90 seconds to complete
+- **Workaround**: Use for quick tests or implement async job pattern
+
+## 🏛️ Architecture Documentation
+
+See [docs/architecture.md](./docs/architecture.md) for detailed sequence diagrams and technical architecture.
+
+## 🔍 Debugging
+
+### Enable Debug Logs
+Set `DEBUG=true` in your `.env` file to enable verbose logging.
+
+### Common Issues
+
+#### Iframe Errors
 ```
+Refused to display 'https://app.glean.com/' in a frame because it set 'X-Frame-Options' to 'deny'.
+```
+**Solution**: This is expected - demonstrates security limitation.
+
+#### Serverless Timeouts
+```
+AGENT_TIMEOUT: Agent execution exceeded HubSpot timeout limits
+```
+**Solution**: This is expected - demonstrates timeout limitation.
+
+#### API Authentication
+```
+AUTH_ERROR: API token may not have agents scope permissions
+```
+**Solution**: Ensure your Glean API token has the `AGENTS` scope.
 
 ## 📁 Project Structure
 
 ```
-glean-agent-extension/
-├── src/app/
-│   ├── app.json                 # HubSpot app manifest
+src/
+├── app/
 │   ├── extensions/
-│   │   ├── GleanCard.jsx        # Main UI component
-│   │   └── strategic-card.json  # CRM card configuration
-│   └── glean.functions/
-│       └── glean-proxy.js       # Serverless function
-├── test-glean-api.js           # Local smoke test
-├── hsproject.json              # HubSpot project config
-└── README.md                   # This file
+│   │   ├── GleanCard.jsx          # Main CRM card component
+│   │   └── strategic-card.json    # Card configuration
+│   ├── glean.functions/
+│   │   ├── glean-proxy.js         # Serverless function
+│   │   └── package.json
+│   └── app.json                   # HubSpot app configuration
+├── docs/
+│   └── architecture.md            # Technical documentation
+└── package.json
 ```
 
-## 🔧 Configuration
+## 🔧 Development Scripts
 
-### Serverless Function Settings
-- **Timeout**: 8 seconds (configurable via `GLEAN_TIMEOUT_MS`)
-- **Retries**: 1 attempt with exponential backoff
-- **Error Categories**: timeout, upstream_4xx, upstream_5xx, unknown
+```bash
+# Development
+npm run dev:card          # Run CRM card locally
+npm run dev:iframe        # Run iframe prototype locally
+npm run build            # Build for production
+npm run deploy           # Deploy to HubSpot
 
-### UI States
-- **idle**: Ready to generate plan
-- **in_progress**: Loading with spinner
-- **success**: Plan generated successfully
-- **error**: Error with retry option
+# Code Quality
+npm run lint             # Run ESLint
+npm run typecheck        # Run TypeScript checks
+npm run test             # Run tests (if available)
 
-## 🐛 Debugging
-
-### High-Signal Logs
-The serverless function provides structured logging:
-```
-[GLEAN_PROXY] START: start_glean_call
-[GLEAN_PROXY] HTTP: http_request_outbound
-[GLEAN_PROXY] HTTP: http_response_status
-[GLEAN_PROXY] SUCCESS: parse_success
-[GLEAN_PROXY] RETURN: return_to_ui
+# Utilities
+npm run clean            # Clean build artifacts
+npm run smoke-test       # Run minimal smoke test
 ```
 
-### Viewing Logs
-1. **HubSpot**: Settings → Integrations → Private Apps → [Your App] → Logs
-2. **Browser**: Developer Console for UI errors
-3. **Local**: `node test-glean-api.js` for direct API testing
+## 🤝 Contributing
 
-### Common Issues
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes
+4. Run tests: `npm run lint && npm run typecheck`
+5. Commit: `git commit -m 'feat: your feature description'`
+6. Push: `git push origin feature/your-feature`
+7. Open a Pull Request
 
-#### Timeout Errors
-```
-Error: Request timeout after 8000ms - Glean API took too long to respond
-```
-**Solution**: Increase `GLEAN_TIMEOUT_MS` (up to HubSpot's limit) or implement async flow
+## 📄 License
 
-#### Authentication Errors
-```
-Error: HTTP 401: Unauthorized
-```
-**Solution**: Check `GLEAN_API_TOKEN` has `AGENTS` scope
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-#### Agent Not Found
-```
-Error: HTTP 404: Not Found
-```
-**Solution**: Verify `GLEAN_AGENT_ID` is correct
+## 🆘 Support
 
-## 🧪 Testing Matrix
-
-| Scenario | Expected Result | Test Command |
-|----------|----------------|--------------|
-| Valid token + fast agent | Success | `node test-glean-api.js "Test Company"` |
-| Invalid token | upstream_4xx | `GLEAN_API_TOKEN=invalid node test-glean-api.js` |
-| Bad agent ID | upstream_404 | `GLEAN_AGENT_ID=bad-id node test-glean-api.js` |
-| Slow agent (~60s) | timeout | `node test-glean-api.js "Slow Company" --timeoutMs=5000` |
-
-## 🔮 Future Enhancements
-
-### Phase 2: Async Flow
-- Implement `/start` + `/status` polling
-- Store results in HubSpot custom objects
-- Add progress indicators
-
-### Phase 3: External Worker
-- Deploy worker service for long-running agents
-- Webhook integration for completion notifications
-- Result caching and versioning
-
-### Phase 4: Multi-Agent Support
-- Dropdown for agent selection
-- Agent-specific input forms
-- Result comparison tools
-
-## 📊 Performance Metrics
-
-### Current Benchmarks
-- **Fast agents**: 2-5 seconds
-- **Medium agents**: 5-8 seconds  
-- **Slow agents**: 8+ seconds (timeout)
-
-### Optimization Opportunities
-- **Caching**: Store results for 24 hours
-- **Preloading**: Start analysis on page load
-- **Progressive loading**: Show partial results
-
-## 🔒 Security
-
-### Token Management
-- **Current**: Hardcoded in serverless function
-- **Future**: HubSpot secrets management
-- **Best Practice**: Rotate tokens regularly
-
-### Data Handling
-- **Input**: Company name only
-- **Output**: Strategic account plan
-- **Storage**: No sensitive data persisted
-
-## 📞 Support
-
-### Troubleshooting Steps
-1. Run local smoke test: `node test-glean-api.js`
-2. Check HubSpot serverless logs
-3. Verify environment variables
-4. Test with different company names
-
-### Known Issues
-- **Developer accounts**: Don't support UI Extensions
-- **CSP restrictions**: Direct API calls blocked (use serverless)
-- **Timeout limits**: HubSpot serverless has 10-15s limit
-
----
-
-**Last Updated**: August 8, 2024  
-**Version**: 2.0.0 (with timeout handling)  
-**Status**: Production Ready 
+For issues related to:
+- **Glean API**: Contact your Glean administrator
+- **HubSpot Platform**: Check [HubSpot Developer Documentation](https://developers.hubspot.com/)
+- **This Extension**: Open an issue in this repository 

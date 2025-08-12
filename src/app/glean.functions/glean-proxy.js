@@ -183,8 +183,6 @@ async function testGleanConfiguration() {
 
 // Main exports.main function
 exports.main = async (context = {}) => {
-  const functionStartTime = Date.now();
-
   log.start('function_entry', {
     contextKeys: Object.keys(context),
     hasParameters: !!context.parameters,
