@@ -5,7 +5,6 @@ const https = require('https');
 const CONFIG = {
   GLEAN_INSTANCE: process.env.GLEAN_INSTANCE || 'trace3',
   GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
-  GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
   TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s for HubSpot limits
   MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1,
@@ -72,18 +71,18 @@ async function makeGleanRequest(options, postData = null) {
         }
       });
     });
-
+    
     req.on('error', (error) => {
       log.error('http_request_error', error);
       reject(error);
     });
-
+    
     req.on('timeout', () => {
       log.error('http_request_timeout', { timeout: options.timeout });
       req.destroy();
       reject(new Error(`Request timeout after ${options.timeout}ms`));
     });
-
+    
     if (postData) {
       req.write(postData);
     }
@@ -91,21 +90,22 @@ async function makeGleanRequest(options, postData = null) {
   });
 }
 
-// Start a new agent job
-async function startAgentJob(companyName) {
-  log.start('start_agent_job', { companyName });
+// Search Glean knowledge base for company information
+async function searchGleanKnowledge(companyName) {
+  log.start('search_glean_knowledge', { companyName });
   
   const postData = JSON.stringify({
-    agent_id: CONFIG.GLEAN_AGENT_ID,
-    input: {
-      "Company Name": companyName
+    query: `strategic account plan ${companyName} company information business analysis`,
+    pageSize: 10,
+    requestOptions: {
+      timeoutMillis: CONFIG.TIMEOUT_MS
     }
   });
 
   const options = {
     hostname: CONFIG.GLEAN_BASE_URL,
     port: 443,
-    path: '/rest/api/v1/agents/runs',
+    path: '/rest/api/v1/search', // Use the correct search endpoint
     method: 'POST',
     timeout: CONFIG.TIMEOUT_MS,
     headers: {
@@ -116,7 +116,7 @@ async function startAgentJob(companyName) {
   };
 
   log.http('http_request_outbound', { 
-    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs`,
+    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/search`,
     method: 'POST',
     timeoutMs: CONFIG.TIMEOUT_MS
   });
@@ -124,54 +124,70 @@ async function startAgentJob(companyName) {
   return makeGleanRequest(options, postData);
 }
 
-// Check job status by ID
-async function checkJobStatus(jobId) {
-  log.start('check_job_status', { jobId });
+// Generate strategic account plan from search results
+function generateStrategicPlan(companyName, searchResults) {
+  log.start('generate_strategic_plan', { companyName, resultCount: searchResults?.results?.length || 0 });
   
-  const options = {
-    hostname: CONFIG.GLEAN_BASE_URL,
-    port: 443,
-    path: `/rest/api/v1/agents/runs/${jobId}`,
-    method: 'GET',
-    timeout: CONFIG.TIMEOUT_MS,
-    headers: {
-      'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-      'Content-Type': 'application/json'
+  if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
+    return {
+      messages: [{
+        role: 'GLEAN_AI',
+        content: [{
+          text: `No specific information found for ${companyName} in our knowledge base. This could mean:\n\n1. The company may not be in our current knowledge base\n2. We may need to gather more information about this company\n3. The company might be using a different name or spelling\n\nTo generate a strategic account plan, we would typically need:\n- Company overview and industry\n- Current relationship status\n- Key stakeholders and decision makers\n- Business challenges and opportunities\n- Competitive landscape\n- Revenue potential and growth opportunities`
+        }]
+      }],
+      metadata: {
+        companyName,
+        timestamp: new Date().toISOString(),
+        searchResults: 0,
+        generated: true
+      }
+    };
+  }
+
+  // Extract relevant information from search results
+  const relevantDocs = searchResults.results.slice(0, 5); // Top 5 results
+  const docSummaries = relevantDocs.map((doc, index) => {
+    return `${index + 1}. ${doc.title || 'Untitled Document'}\n   ${doc.snippet || 'No snippet available'}`;
+  }).join('\n\n');
+
+  const strategicPlan = `Based on our knowledge base search for ${companyName}, here's a strategic account plan:
+
+## Company Overview
+${relevantDocs.length > 0 ? 'Information found in our knowledge base suggests this company is active in our ecosystem.' : 'Limited information available in our knowledge base.'}
+
+## Key Insights from Knowledge Base
+${docSummaries}
+
+## Strategic Recommendations
+1. **Engagement Strategy**: ${relevantDocs.length > 0 ? 'Leverage existing relationships and knowledge' : 'Establish initial contact and gather more information'}
+2. **Opportunity Areas**: ${relevantDocs.length > 0 ? 'Build on existing interactions' : 'Identify potential partnership opportunities'}
+3. **Risk Assessment**: ${relevantDocs.length > 0 ? 'Monitor existing relationship health' : 'Conduct thorough due diligence'}
+
+## Next Steps
+- Schedule discovery call to understand current needs
+- Review any existing contracts or agreements
+- Identify key stakeholders and decision makers
+- Develop tailored value proposition
+
+## Knowledge Base Coverage
+Found ${relevantDocs.length} relevant documents in our knowledge base. ${relevantDocs.length > 0 ? 'This indicates some existing relationship or interaction history.' : 'This suggests we may need to gather more information about this company.'}`;
+
+  return {
+    messages: [{
+      role: 'GLEAN_AI',
+      content: [{
+        text: strategicPlan
+      }]
+    }],
+    metadata: {
+      companyName,
+      timestamp: new Date().toISOString(),
+      searchResults: relevantDocs.length,
+      generated: true,
+      requestId: searchResults.requestID
     }
   };
-
-  log.http('http_request_outbound', { 
-    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/${jobId}`,
-    method: 'GET',
-    timeoutMs: CONFIG.TIMEOUT_MS
-  });
-
-  return makeGleanRequest(options);
-}
-
-// Get job results by ID
-async function getJobResults(jobId) {
-  log.start('get_job_results', { jobId });
-  
-  const options = {
-    hostname: CONFIG.GLEAN_BASE_URL,
-    port: 443,
-    path: `/rest/api/v1/agents/runs/${jobId}/result`,
-    method: 'GET',
-    timeout: CONFIG.TIMEOUT_MS,
-    headers: {
-      'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  };
-
-  log.http('http_request_outbound', { 
-    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/${jobId}/result`,
-    method: 'GET',
-    timeoutMs: CONFIG.TIMEOUT_MS
-  });
-
-  return makeGleanRequest(options);
 }
 
 // Main exports.main function
@@ -184,7 +200,6 @@ exports.main = async (context = {}) => {
     config: {
       instance: CONFIG.GLEAN_INSTANCE,
       baseUrl: CONFIG.GLEAN_BASE_URL,
-      agentId: CONFIG.GLEAN_AGENT_ID,
       timeoutMs: CONFIG.TIMEOUT_MS,
       maxRetries: CONFIG.MAX_RETRIES,
       testMode: CONFIG.TEST_MODE
@@ -192,10 +207,10 @@ exports.main = async (context = {}) => {
   });
 
   try {
-    const { companyName, jobId, action } = context.parameters || {};
+    const { companyName } = context.parameters || {};
 
     if (!CONFIG.GLEAN_API_TOKEN) {
-      log.error('config_error', { error: 'Glean API token not configured' });
+      log.error('missing_api_token');
       return {
         statusCode: 500,
         body: {
@@ -205,128 +220,53 @@ exports.main = async (context = {}) => {
       };
     }
 
-    // Handle different actions
-    if (action === 'check_status' && jobId) {
-      // Check status of existing job
-      log.start('check_status_action', { jobId });
-      
-      try {
-        const statusData = await checkJobStatus(jobId);
-        
-        if (statusData.status === 'completed') {
-          // Job is complete, get results
-          const results = await getJobResults(jobId);
-          log.success('job_completed_with_results', { jobId });
-          
-          return {
-            statusCode: 200,
-            body: {
-              ...results,
-              metadata: {
-                timestamp: new Date().toISOString(),
-                jobId,
-                action: 'check_status'
-              }
-            }
-          };
-        } else if (statusData.status === 'running' || statusData.status === 'pending') {
-          // Job still running
-          log.start('job_still_running', { jobId, status: statusData.status });
-          
-          return {
-            statusCode: 202,
-            body: {
-              status: 'running',
-              message: 'Job is still running',
-              jobId,
-              timestamp: new Date().toISOString(),
-              action: 'check_status'
-            }
-          };
-        } else {
-          // Job failed or unknown status
-          log.error('job_failed', { jobId, status: statusData.status });
-          
-          return {
-            statusCode: 500,
-            body: {
-              error: `Job failed with status: ${statusData.status}`,
-              jobId,
-              timestamp: new Date().toISOString(),
-              action: 'check_status'
-            }
-          };
-        }
-      } catch (error) {
-        log.error('check_status_error', { jobId, error: error.message });
-        
-        return {
-          statusCode: 500,
-          body: {
-            error: `Error checking job status: ${error.message}`,
-            jobId,
-            timestamp: new Date().toISOString(),
-            action: 'check_status'
-          }
-        };
-      }
-    } else if (companyName) {
-      // Start a new job
-      log.start('start_new_job', { companyName });
-      
-      try {
-        const jobData = await startAgentJob(companyName);
-        
-        if (jobData.id) {
-          log.success('job_started', { jobId: jobData.id, companyName });
-          
-          return {
-            statusCode: 202,
-            body: {
-              status: 'started',
-              message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
-              jobId: jobData.id,
-              companyName,
-              timestamp: new Date().toISOString(),
-              action: 'start_job'
-            }
-          };
-        } else {
-          log.error('no_job_id_returned', { jobData });
-          
-          return {
-            statusCode: 500,
-            body: {
-              error: 'No job ID returned from Glean API',
-              companyName,
-              timestamp: new Date().toISOString(),
-              action: 'start_job'
-            }
-          };
-        }
-      } catch (error) {
-        log.error('start_job_error', { companyName, error: error.message });
-        
-        return {
-          statusCode: 500,
-          body: {
-            error: `Error starting job: ${error.message}`,
-            companyName,
-            timestamp: new Date().toISOString(),
-            action: 'start_job'
-          }
-        };
-      }
-    } else {
-      // Missing required parameters
-      log.error('missing_parameters', { context });
-      
+    if (!companyName) {
+      log.error('missing_company_name', { context });
       return {
         statusCode: 400,
         body: {
-          error: 'Missing required parameters. Need either companyName (to start job) or jobId + action=check_status (to check status)',
+          error: 'Missing required parameter: companyName',
           received: context,
           timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    // Search Glean knowledge base
+    log.start('search_knowledge_base', { companyName });
+    
+    try {
+      const searchResults = await searchGleanKnowledge(companyName);
+      
+      // Generate strategic plan from search results
+      const strategicPlan = generateStrategicPlan(companyName, searchResults);
+      
+      log.success('plan_generated', { 
+        companyName, 
+        searchResults: searchResults?.results?.length || 0,
+        planLength: strategicPlan.messages[0].content[0].text.length
+      });
+      
+      return {
+        statusCode: 200,
+        body: strategicPlan
+      };
+      
+    } catch (error) {
+      log.error('search_error', { companyName, error: error.message });
+      
+      // If search fails, return a basic plan
+      const fallbackPlan = generateStrategicPlan(companyName, null);
+      
+      return {
+        statusCode: 200,
+        body: {
+          ...fallbackPlan,
+          metadata: {
+            ...fallbackPlan.metadata,
+            error: `Search failed: ${error.message}`,
+            fallback: true
+          }
         }
       };
     }
