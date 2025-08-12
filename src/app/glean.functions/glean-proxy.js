@@ -60,13 +60,20 @@ async function makeGleanRequest(options, postData = null) {
             resolve(parsedData);
           } catch (error) {
             log.error('parse_error', error);
-            reject(new Error(`Invalid JSON response: ${error.message}`));
+            log.error('raw_response_data', { 
+              responseData: responseData.substring(0, 500),
+              responseLength: responseData.length,
+              statusCode: res.statusCode,
+              headers: res.headers
+            });
+            reject(new Error(`Invalid JSON response: ${error.message}. Raw response: ${responseData.substring(0, 200)}`));
           }
         } else {
           log.error('upstream_error', {
             statusCode: res.statusCode,
             responseData: responseData.substring(0, 200),
-            path: options.path
+            path: options.path,
+            headers: res.headers
           });
           reject(new Error(`HTTP ${res.statusCode}: ${responseData.substring(0, 200)}`));
         }
@@ -434,7 +441,10 @@ async function discoverAgentExecutionEndpoints() {
     // Test other possible patterns
     '/rest/api/v1/agents/runs',
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/run`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/execute`,
+    
+    // Test using search endpoint with agent filter
+    '/rest/api/v1/agents/search'
   ];
 
   // Test different request formats for each endpoint
@@ -471,22 +481,34 @@ async function discoverAgentExecutionEndpoints() {
         agent_id: CONFIG.GLEAN_AGENT_ID,
         prompt: "Test prompt for agent execution"
       }
+    },
+    {
+      name: 'simple_format',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID
+      }
     }
   ];
 
   for (const endpoint of endpointPatterns) {
     let endpointWorked = false;
     
-    for (const format of requestFormats) {
+    // Special handling for search endpoint
+    if (endpoint === '/rest/api/v1/agents/search') {
       try {
-        const postData = JSON.stringify(format.body);
+        const searchBody = {
+          query: "Test query for agent execution",
+          agent_id: CONFIG.GLEAN_AGENT_ID
+        };
+        
+        const postData = JSON.stringify(searchBody);
         
         const options = {
           hostname: CONFIG.GLEAN_BASE_URL,
           port: 443,
           path: endpoint,
           method: 'POST',
-          timeout: 2000, // Very short timeout for discovery
+          timeout: 2000,
           headers: {
             'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
             'Content-Type': 'application/json',
@@ -494,23 +516,59 @@ async function discoverAgentExecutionEndpoints() {
           }
         };
 
-        log.start('testing_endpoint_pattern', { endpoint, format: format.name });
+        log.start('testing_search_endpoint', { endpoint });
         const response = await makeGleanRequest(options, postData);
         
         discoveryResults.workingEndpoints.push({
           endpoint: endpoint,
-          source: 'pattern_discovery',
+          source: 'search_discovery',
           method: 'POST',
-          requestFormat: format.name,
+          requestFormat: 'search_format',
           response: response
         });
         
-        log.success('endpoint_pattern_working', { endpoint, format: format.name });
+        log.success('search_endpoint_working', { endpoint });
         endpointWorked = true;
-        break; // Found a working format for this endpoint
       } catch (error) {
-        log.error('endpoint_pattern_failed', { endpoint, format: format.name, error: error.message });
-        // Continue to next format
+        log.error('search_endpoint_failed', { endpoint, error: error.message });
+      }
+    } else {
+      // Regular endpoint testing with multiple formats
+      for (const format of requestFormats) {
+        try {
+          const postData = JSON.stringify(format.body);
+          
+          const options = {
+            hostname: CONFIG.GLEAN_BASE_URL,
+            port: 443,
+            path: endpoint,
+            method: 'POST',
+            timeout: 2000, // Very short timeout for discovery
+            headers: {
+              'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            }
+          };
+
+          log.start('testing_endpoint_pattern', { endpoint, format: format.name });
+          const response = await makeGleanRequest(options, postData);
+          
+          discoveryResults.workingEndpoints.push({
+            endpoint: endpoint,
+            source: 'pattern_discovery',
+            method: 'POST',
+            requestFormat: format.name,
+            response: response
+          });
+          
+          log.success('endpoint_pattern_working', { endpoint, format: format.name });
+          endpointWorked = true;
+          break; // Found a working format for this endpoint
+        } catch (error) {
+          log.error('endpoint_pattern_failed', { endpoint, format: format.name, error: error.message });
+          // Continue to next format
+        }
       }
     }
     
@@ -528,7 +586,8 @@ async function discoverAgentExecutionEndpoints() {
   const getEndpoints = [
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/status`,
     `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/info`,
-    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/details`
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/details`,
+    `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/schemas`
   ];
 
   for (const endpoint of getEndpoints) {
