@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
 import { hubspot, Text, Box, Button } from '@hubspot/ui-extensions';
 
-// Architecture stubs for future async flow and external worker support
-const FEATURE_FLAGS = {
-  USE_ASYNC_FLOW: false, // Branch A: Start + Poll async flow
-  USE_EXTERNAL_WORKER: false // Branch B: External worker service
-};
-
 // Content persistence hooks (no-op for now)
 const savePlan = async (companyId, content, metadata) => {
   // TODO: Implement storage strategy
@@ -28,11 +22,10 @@ const GleanCard = ({ context, actions }) => {
   const [error, setError] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
   const [pollingCount, setPollingCount] = useState(0);
-  // Always use async mode since Glean agent is slow
-  const asyncMode = true;
+  const [currentJobId, setCurrentJobId] = useState(null);
 
   // Poll for completion of async job
-  const pollForCompletion = async (companyName, maxAttempts = 30) => {
+  const pollForCompletion = async (jobId, maxAttempts = 30) => {
     setIsPolling(true);
     setPollingCount(0);
     
@@ -40,14 +33,13 @@ const GleanCard = ({ context, actions }) => {
       setPollingCount(attempt);
       
       try {
-        console.log(`Polling attempt ${attempt}/${maxAttempts} for completion...`);
+        console.log(`Polling attempt ${attempt}/${maxAttempts} for job ${jobId}...`);
         
         const response = await hubspot.serverless('glean-proxy', {
           propertiesToSend: ['name'],
           parameters: {
-            companyName: companyName,
-            checkStatus: true,
-            attempt: attempt
+            jobId: jobId,
+            action: 'check_status'
           }
         });
         
@@ -56,8 +48,29 @@ const GleanCard = ({ context, actions }) => {
         if (response?.statusCode === 200 && response?.body?.messages) {
           // Job completed successfully
           console.log('Job completed!', response.body);
+          
+          // Save the plan to persistent storage
+          if (response.body.messages && Array.isArray(response.body.messages)) {
+            const companyId = context.crm?.objectId;
+            const planContent = response.body.messages
+              .map(msg => msg.content?.map(c => c.text).join(' '))
+              .join('\n\n');
+            
+            try {
+              await savePlan(companyId, planContent, {
+                timestamp: new Date().toISOString(),
+                jobId: jobId,
+                duration: response.body.metadata?.duration
+              });
+            } catch (saveError) {
+              console.warn('Failed to save plan:', saveError);
+              // Don't fail the UI if save fails
+            }
+          }
+          
           setResult(response.body);
           setIsPolling(false);
+          setCurrentJobId(null);
           return;
         } else if (response?.statusCode === 202) {
           // Still running, continue polling
@@ -72,6 +85,7 @@ const GleanCard = ({ context, actions }) => {
           console.error('Unexpected poll response:', response);
           setError('Error checking job status. Please try again.');
           setIsPolling(false);
+          setCurrentJobId(null);
           return;
         }
       } catch (error) {
@@ -79,6 +93,7 @@ const GleanCard = ({ context, actions }) => {
         if (attempt === maxAttempts) {
           setError('Job timed out after 5 minutes. Please try again.');
           setIsPolling(false);
+          setCurrentJobId(null);
           return;
         }
         // Wait longer on errors
@@ -88,12 +103,14 @@ const GleanCard = ({ context, actions }) => {
     
     setError('Job timed out after 5 minutes. Please try again.');
     setIsPolling(false);
+    setCurrentJobId(null);
   };
 
   const runStrategicAccountPlan = async () => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setCurrentJobId(null);
 
     try {
       let companyName = 'Unknown Company';
@@ -109,14 +126,12 @@ const GleanCard = ({ context, actions }) => {
         companyName = context.crm?.objectId ? `Company ID: ${context.crm.objectId}` : 'Unknown Company';
       }
 
-      console.log('Calling Glean API via HubSpot serverless function for:', companyName);
-      console.log('Async mode enabled:', asyncMode);
+      console.log('Starting Glean agent job for:', companyName);
 
       const response = await hubspot.serverless('glean-proxy', {
         propertiesToSend: ['name'],
         parameters: {
-          companyName: companyName,
-          asyncMode: asyncMode
+          companyName: companyName
         }
       });
 
@@ -137,8 +152,7 @@ const GleanCard = ({ context, actions }) => {
         throw new Error(`Serverless function failed: ${errorMessage}`);
       }
 
-      // The serverless function returns { statusCode: 200, body: data }
-      // We need to access response.body for the actual Glean data
+      // Extract the response data
       const gleanData = response.body || response;
       
       console.log('Glean data after extraction:', gleanData);
@@ -151,27 +165,33 @@ const GleanCard = ({ context, actions }) => {
         throw new Error('Invalid response structure: gleanData is not an object');
       }
 
-      // Handle async response (status 202)
-      if (response.statusCode === 202) {
+      // Handle job started response (status 202)
+      if (response.statusCode === 202 && gleanData.jobId) {
+        console.log('Job started with ID:', gleanData.jobId);
+        setCurrentJobId(gleanData.jobId);
+        
         setResult({
           async: true,
           status: 'started',
           message: gleanData.message || 'Generation started',
-          companyName: gleanData.companyName
+          companyName: gleanData.companyName,
+          jobId: gleanData.jobId
         });
         
         // Start polling for completion
-        pollForCompletion(companyName);
+        pollForCompletion(gleanData.jobId);
         return;
       }
 
-      // Handle synchronous response (status 200)
-      if (response.statusCode === 200) {
+      // Handle immediate completion (status 200)
+      if (response.statusCode === 200 && gleanData.messages) {
+        console.log('Job completed immediately:', gleanData);
+        
         // Save the plan to persistent storage
         if (gleanData.messages && Array.isArray(gleanData.messages)) {
           const companyId = context.crm?.objectId;
           const planContent = gleanData.messages
-            .map(msg => msg.content?.map(c => c.text).join('\n'))
+            .map(msg => msg.content?.map(c => c.text).join(' '))
             .join('\n\n');
           
           try {
@@ -190,64 +210,34 @@ const GleanCard = ({ context, actions }) => {
         return;
       }
 
-      // Handle missing messages gracefully
-      if (!gleanData.messages || !Array.isArray(gleanData.messages)) {
-        console.error('Invalid response structure - full response:', JSON.stringify(response, null, 2));
-        console.error('Invalid response structure - glean data:', JSON.stringify(gleanData, null, 2));
-        console.error('Messages property:', gleanData.messages);
-        console.error('Messages is array?', Array.isArray(gleanData.messages));
-        
-        // Instead of throwing, show a user-friendly message
-        setResult({
-          error: true,
-          message: 'Received response from Glean but it was in an unexpected format. Please try again.',
-          rawData: gleanData
-        });
-        return;
-      }
-
-                        console.log('Setting result with messages:', gleanData.messages);
-                  
-                  // Save the plan to persistent storage
-                  if (gleanData.messages && Array.isArray(gleanData.messages)) {
-                    const companyId = context.crm?.objectId;
-                    const planContent = gleanData.messages
-                      .map(msg => msg.content?.map(c => c.text).join(' '))
-                      .join('\n\n');
-                    
-                    try {
-                      await savePlan(companyId, planContent, {
-                        timestamp: new Date().toISOString(),
-                        companyName,
-                        duration: gleanData.metadata?.duration
-                      });
-                    } catch (saveError) {
-                      console.warn('Failed to save plan:', saveError);
-                      // Don't fail the UI if save fails
-                    }
-                  }
-                  
-                  setResult(gleanData);
+      // Handle unexpected response format
+      console.error('Unexpected response format:', gleanData);
+      setResult({
+        error: true,
+        message: 'Received response from Glean but it was in an unexpected format. Please try again.',
+        rawData: gleanData
+      });
+      
     } catch (err) {
       console.error('Error running Glean agent:', err);
       console.error('Error type:', err.name);
       console.error('Error stack:', err.stack);
 
-                        // Handle categorized errors from serverless function
-                  if (err.message.includes('Serverless function failed:')) {
-                    const errorBody = err.message.replace('Serverless function failed: ', '');
-                    setError(errorBody);
-                  } else if (err.message.includes('timeout')) {
-                    setError(`The Glean agent is taking longer than expected to respond (30+ seconds). This is normal for complex analysis. Consider enabling async mode for long-running agents.`);
-                  } else if (err.message.includes('Failed to fetch')) {
-                    setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
-                  } else if (err.message.includes('Bearer token')) {
-                    setError(err.message);
-                  } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
-                    setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
-                  } else {
-                    setError(`Error: ${err.message}`);
-                  }
+      // Handle categorized errors from serverless function
+      if (err.message.includes('Serverless function failed:')) {
+        const errorBody = err.message.replace('Serverless function failed: ', '');
+        setError(errorBody);
+      } else if (err.message.includes('timeout')) {
+        setError(`The Glean agent is taking longer than expected to respond (30+ seconds). This is normal for complex analysis. Consider enabling async mode for long-running agents.`);
+      } else if (err.message.includes('Failed to fetch')) {
+        setError(`Network error: Unable to connect to Glean API. This might be a CORS issue or the API endpoint is not accessible from HubSpot. Error: ${err.message}`);
+      } else if (err.message.includes('Bearer token')) {
+        setError(err.message);
+      } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError(`CORS or network error: ${err.message}. The Glean API might not allow requests from HubSpot's domain.`);
+      } else {
+        setError(`Error: ${err.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -257,29 +247,29 @@ const GleanCard = ({ context, actions }) => {
     <Box padding="medium">
       <Text variant="h3">Strategic Account Plan</Text>
 
-                        {!result && !isLoading && !error && (
-                    <Box padding="small">
-                      <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
-                      
-                      <Box padding="small">
-                        <Text variant="small">
-                          ⚡ Using async mode for optimal performance
-                        </Text>
-                      </Box>
-                      
-                      <Button
-                        variant="primary"
-                        onClick={runStrategicAccountPlan}
-                        disabled={isLoading}
-                      >
-                        Generate Plan
-                      </Button>
-                    </Box>
-                  )}
+      {!result && !isLoading && !error && (
+        <Box padding="small">
+          <Text>Generate Strategic Account Plan for this company using Trace3 Glean Agent:</Text>
+          
+          <Box padding="small">
+            <Text variant="small">
+              ⚡ Using job tracking for reliable long-running agents
+            </Text>
+          </Box>
+          
+          <Button
+            variant="primary"
+            onClick={runStrategicAccountPlan}
+            disabled={isLoading}
+          >
+            Generate Plan
+          </Button>
+        </Box>
+      )}
 
       {isLoading && (
         <Box padding="small">
-          <Text>⏳ Generating Strategic Account Plan...</Text>
+          <Text>⏳ Starting Strategic Account Plan generation...</Text>
         </Box>
       )}
 
@@ -287,6 +277,9 @@ const GleanCard = ({ context, actions }) => {
         <Box padding="small">
           <Text>🔄 Checking for completion... (Attempt {pollingCount}/30)</Text>
           <Text variant="small">This may take 2-3 minutes. Checking every 30-60 seconds.</Text>
+          {currentJobId && (
+            <Text variant="small">Job ID: {currentJobId}</Text>
+          )}
         </Box>
       )}
 
@@ -302,65 +295,44 @@ const GleanCard = ({ context, actions }) => {
         </Box>
       )}
 
-      {result && (
+      {result && !result.error && (
         <Box padding="small">
-          <Text variant="h4">Strategic Account Plan Results:</Text>
-
-          {/* Handle async response */}
-          {result.async && (
-            <Box padding="small">
+          {result.async && result.status === 'started' ? (
+            <Box>
               <Text variant="success">✅ {result.message}</Text>
-              <Text variant="small">The agent is running in the background. This may take 1-2 minutes to complete.</Text>
+              <Text variant="small">Job ID: {result.jobId}</Text>
+              <Text variant="small">Company: {result.companyName}</Text>
+            </Box>
+          ) : (
+            <Box>
+              <Text variant="success">✅ Strategic Account Plan Generated!</Text>
+              <Text variant="small">Company: {result.metadata?.companyName || 'Unknown'}</Text>
+              
+              {result.messages && Array.isArray(result.messages) && result.messages.map((message, index) => (
+                <Box key={index} padding="small">
+                  <Text variant="small" fontWeight="bold">
+                    {message.role === 'GLEAN_AI' ? 'AI Analysis:' : message.role}:
+                  </Text>
+                  {message.content && Array.isArray(message.content) && message.content.map((content, contentIndex) => (
+                    <Text key={contentIndex} variant="small">
+                      {content.text}
+                    </Text>
+                  ))}
+                </Box>
+              ))}
+              
+              <Button
+                variant="secondary"
+                onClick={runStrategicAccountPlan}
+              >
+                Generate New Plan
+              </Button>
             </Box>
           )}
-
-          {/* Handle error response */}
-          {result.error && (
-            <Box padding="small">
-              <Text variant="error">⚠️ {result.message}</Text>
-              <Text variant="small">Please try again or contact support if this persists.</Text>
-            </Box>
-          )}
-
-          {/* Handle normal response */}
-          {result.messages && Array.isArray(result.messages) && (
-            result.messages.map((message, index) => (
-              <Box key={index} padding="small">
-                <Text variant="bold">{message.role === 'GLEAN_AI' ? 'Strategic Account Plan:' : message.role}:</Text>
-                {message.content && Array.isArray(message.content) ? (
-                  message.content.map((content, contentIndex) => (
-                    <Text key={contentIndex}>{content.text || 'No text content'}</Text>
-                  ))
-                ) : (
-                  <Text>No content available</Text>
-                )}
-              </Box>
-            ))
-          )}
-
-          {/* Show raw data for debugging */}
-          {result.rawData && (
-            <Box padding="small">
-              <Text variant="small">Debug Info:</Text>
-              <Text variant="small">{JSON.stringify(result.rawData, null, 2)}</Text>
-            </Box>
-          )}
-
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setResult(null);
-              setError(null);
-            }}
-          >
-            Run New Analysis
-          </Button>
         </Box>
       )}
     </Box>
   );
-}; 
+};
 
-hubspot.extend(({ context, actions }) => (
-  <GleanCard context={context} actions={actions} />
-)); 
+export default GleanCard; 
