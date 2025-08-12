@@ -35,6 +35,137 @@ const log = {
   }
 };
 
+// Make HTTP request with custom timeout
+async function makeGleanRequestWithTimeout(companyName, customTimeout) {
+  const startTime = Date.now();
+  
+  log.start('start_glean_call_with_timeout', { 
+    companyName, 
+    customTimeout,
+    config: { 
+      baseUrl: CONFIG.GLEAN_BASE_URL, 
+      agentId: CONFIG.GLEAN_AGENT_ID,
+      timeoutMs: customTimeout
+    } 
+  });
+
+  const postData = JSON.stringify({
+    agent_id: CONFIG.GLEAN_AGENT_ID,
+    input: {
+      "Company Name": companyName
+    }
+  });
+
+  const options = {
+    hostname: CONFIG.GLEAN_BASE_URL,
+    port: 443,
+    path: '/rest/api/v1/agents/runs/stream',
+    method: 'POST',
+    timeout: customTimeout,
+    headers: {
+      'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+      'Accept': 'text/event-stream'
+    }
+  };
+
+  log.http('http_request_outbound_with_timeout', { 
+    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/stream`,
+    method: 'POST',
+    timeoutMs: customTimeout,
+    dataSize: Buffer.byteLength(postData)
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      const responseStartTime = Date.now();
+      let responseData = '';
+      
+      log.http('http_response_status_with_timeout', { 
+        statusCode: res.statusCode, 
+        headers: res.headers
+      });
+      
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        const responseDuration = Date.now() - responseStartTime;
+        const totalDuration = Date.now() - startTime;
+        
+        log.http('http_response_complete_with_timeout', { 
+          statusCode: res.statusCode,
+          responseSize: responseData.length,
+          responseDuration,
+          totalDuration
+        });
+        
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            // Parse SSE data - look for the final message
+            const lines = responseData.split('\n');
+            let finalMessage = null;
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6); // Remove 'data: ' prefix
+                if (data && data !== '[DONE]') {
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.messages && Array.isArray(parsed.messages)) {
+                      finalMessage = parsed;
+                    }
+                  } catch (e) {
+                    // Skip invalid JSON lines
+                  }
+                }
+              }
+            }
+            
+            if (finalMessage) {
+              log.success('parse_success_with_timeout', { 
+                dataKeys: Object.keys(finalMessage),
+                hasMessages: finalMessage.messages ? Array.isArray(finalMessage.messages) : false,
+                messageCount: finalMessage.messages ? finalMessage.messages.length : 0
+              });
+              resolve(finalMessage);
+            } else {
+              // If no final message found, try to parse the whole response as JSON
+              const parsedData = JSON.parse(responseData);
+              resolve(parsedData);
+            }
+          } catch (error) {
+            log.error('parse_error_with_timeout', error);
+            reject(new Error(`Invalid JSON response: ${error.message}`));
+          }
+        } else {
+          log.error('upstream_error_with_timeout', { 
+            statusCode: res.statusCode, 
+            responseData: responseData.substring(0, 200) 
+          });
+          reject(new Error(`HTTP ${res.statusCode}: ${responseData.substring(0, 200)}`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      log.error('http_request_error_with_timeout', error);
+      reject(error);
+    });
+    
+    req.on('timeout', () => {
+      log.error('http_request_timeout_with_timeout', { customTimeout });
+      req.destroy();
+      reject(new Error(`Request timeout after ${customTimeout}ms - Glean API took too long to respond`));
+    });
+    
+    req.write(postData);
+    req.end();
+  });
+}
+
 // Make HTTP request with timeout and retry logic
 async function makeGleanRequest(companyName, attempt = 1) {
   const startTime = Date.now();
@@ -367,10 +498,41 @@ exports.main = async (context = {}) => {
     
     // Check if we should use async flow for long-running agents
     if (CONFIG.USE_ASYNC_FLOW || asyncMode) {
-      // Start the agent asynchronously and return immediately to avoid timeout
-      log.start('async_flow_start', { companyName });
+      // Try streaming first, but with a short timeout to avoid HubSpot limits
+      log.start('streaming_attempt', { companyName });
       
-      // Start the agent in the background (this will run but we won't wait for it)
+      try {
+        // Use a shorter timeout for streaming to stay within HubSpot limits
+        const streamingTimeout = 8000; // 8 seconds to stay under HubSpot's 10s limit
+        
+        const data = await makeGleanRequestWithTimeout(companyName, streamingTimeout);
+        
+        // If we got a complete response quickly, return it
+        if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          log.success('streaming_success', { companyName });
+          
+          const response = {
+            statusCode: 200,
+            body: {
+              ...data,
+              metadata: {
+                timestamp: new Date().toISOString(),
+                companyName,
+                method: 'streaming'
+              }
+            }
+          };
+          
+          return response;
+        }
+      } catch (error) {
+        log.start('streaming_fallback', { companyName, error: error.message });
+      }
+      
+      // If streaming failed or timed out, fall back to async approach
+      log.start('async_fallback_start', { companyName });
+      
+      // Start the agent asynchronously and return immediately
       makeGleanRequest(companyName)
         .then(data => {
           log.success('async_agent_completed', { companyName });
@@ -386,11 +548,12 @@ exports.main = async (context = {}) => {
           message: 'Strategic Account Plan generation started. This may take 1-2 minutes to complete.',
           companyName,
           timestamp: new Date().toISOString(),
-          async: true
+          async: true,
+          method: 'async_fallback'
         }
       };
       
-      log.return('async_flow_return', { 
+      log.return('async_fallback_return', { 
         statusCode: response.statusCode,
         message: response.body.message
       });
