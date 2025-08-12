@@ -105,65 +105,186 @@ async function makeGleanRequest(options, postData = null) {
   });
 }
 
+// Handle streaming responses (Server-Sent Events)
+async function makeGleanStreamingRequest(options, postData = null) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let fullResponse = '';
+      let messages = [];
+      let isComplete = false;
+      
+      log.http('streaming_response_start', { 
+        statusCode: res.statusCode, 
+        headers: res.headers,
+        path: options.path
+      });
+      
+      res.on('data', (chunk) => {
+        const chunkStr = chunk.toString();
+        fullResponse += chunkStr;
+        
+        // Parse Server-Sent Events
+        const lines = chunkStr.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              if (data.messages && Array.isArray(data.messages)) {
+                messages = messages.concat(data.messages);
+              }
+            } catch (error) {
+              // Ignore parsing errors for individual SSE lines
+            }
+          }
+        }
+      });
+      
+      res.on('end', () => {
+        log.http('streaming_response_complete', { 
+          statusCode: res.statusCode,
+          responseSize: fullResponse.length,
+          messagesCount: messages.length,
+          path: options.path
+        });
+        
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          // Return the accumulated messages
+          resolve({
+            messages: messages,
+            rawResponse: fullResponse
+          });
+        } else {
+          log.error('streaming_upstream_error', {
+            statusCode: res.statusCode,
+            responseData: fullResponse.substring(0, 500),
+            path: options.path
+          });
+          reject(new Error(`HTTP ${res.statusCode}: ${fullResponse.substring(0, 200)}`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      log.error('streaming_request_error', error);
+      reject(error);
+    });
+    
+    req.on('timeout', () => {
+      log.error('streaming_request_timeout', { timeout: options.timeout });
+      req.destroy();
+      reject(new Error(`Streaming request timeout after ${options.timeout}ms`));
+    });
+    
+    if (postData) {
+      req.write(postData);
+    }
+    req.end();
+  });
+}
+
 // Execute a pre-built Glean agent
 async function executeGleanAgent(companyName) {
   log.start('execute_glean_agent', { companyName, agentId: CONFIG.GLEAN_AGENT_ID });
   
-  // Use the exact format from the response schema documentation
-  const executionAttempts = [
-    // Attempt 1: Try the exact format from the schema documentation
-    {
-      name: 'schema_documentation_format',
-      endpoint: '/rest/api/v1/agents/runs/wait',
-      method: 'POST',
-      body: {
-        agent_id: CONFIG.GLEAN_AGENT_ID,
-        messages: [
-          {
-            role: "USER",
-            content: [
-              {
-                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-                type: "text"
-              }
-            ]
-          }
-        ]
+  // First, get the agent's schema to understand what input it expects
+  let agentSchema = null;
+  try {
+    const schemaOptions = {
+      hostname: CONFIG.GLEAN_BASE_URL,
+      port: 443,
+      path: `/rest/api/v1/agents/${CONFIG.GLEAN_AGENT_ID}/schemas`,
+      method: 'GET',
+      timeout: 5000,
+      headers: {
+        'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
+        'Content-Type': 'application/json'
       }
-    },
-    // Attempt 2: Try streaming endpoint with same format
+    };
+
+    agentSchema = await makeGleanRequest(schemaOptions);
+    log.success('agent_schema_retrieved', { schema: agentSchema });
+  } catch (error) {
+    log.error('failed_to_get_agent_schema', error);
+  }
+
+  // Use the correct format for streaming API (no 'run' wrapper)
+  const executionAttempts = [
+    // Attempt 1: Streaming with correct format and field name
     {
-      name: 'streaming_schema_format',
+      name: 'streaming_company_name_exact',
       endpoint: '/rest/api/v1/agents/runs/stream',
       method: 'POST',
       body: {
         agent_id: CONFIG.GLEAN_AGENT_ID,
-        messages: [
-          {
-            role: "USER",
-            content: [
-              {
-                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
-                type: "text"
-              }
-            ]
-          }
-        ]
+        input: {
+          "Company Name": companyName
+        }
       }
     },
-    // Attempt 3: Try with input object format
+    // Attempt 2: Streaming with alternative field names
     {
-      name: 'input_object_format',
+      name: 'streaming_company_name_variations',
+      endpoint: '/rest/api/v1/agents/runs/stream',
+      method: 'POST',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        input: {
+          "CompanyName": companyName
+        }
+      }
+    },
+    // Attempt 3: Blocking with correct format (fallback)
+    {
+      name: 'blocking_company_name_exact',
       endpoint: '/rest/api/v1/agents/runs/wait',
       method: 'POST',
       body: {
         agent_id: CONFIG.GLEAN_AGENT_ID,
         input: {
-          query: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`
+          "Company Name": companyName
         }
+      }
+    },
+    // Attempt 4: Messages format as fallback
+    {
+      name: 'messages_format_fallback',
+      endpoint: '/rest/api/v1/agents/runs/wait',
+      method: 'POST',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        messages: [
+          {
+            role: "USER",
+            content: [
+              {
+                text: `Generate a strategic account plan for ${companyName}. Include company overview, key insights, strategic recommendations, and next steps.`,
+                type: "text"
+              }
+            ]
+          }
+        ]
       }
     }
   ];
+
+  // If we have the agent schema, try to use the exact input fields it expects
+  if (agentSchema && agentSchema.input_schema) {
+    log.start('using_agent_schema', { inputSchema: agentSchema.input_schema });
+    
+    // Try to construct the input based on the schema
+    const schemaBasedAttempt = {
+      name: 'schema_based_input',
+      endpoint: '/rest/api/v1/agents/runs/wait',
+      method: 'POST',
+      body: {
+        agent_id: CONFIG.GLEAN_AGENT_ID,
+        input: agentSchema.input_schema
+      }
+    };
+    
+    // Add the schema-based attempt to the beginning
+    executionAttempts.unshift(schemaBasedAttempt);
+  }
 
   let lastError = null;
   
@@ -192,7 +313,23 @@ async function executeGleanAgent(companyName) {
         requestBody: attempt.body
       });
 
-      const result = await makeGleanRequest(options, postData);
+      // Use streaming function for streaming endpoints, regular function for blocking endpoints
+      let result;
+      if (attempt.endpoint.includes('/stream')) {
+        result = await makeGleanStreamingRequest(options, postData);
+        // Convert streaming result to expected format
+        result = {
+          messages: result.messages,
+          metadata: {
+            source: 'glean_agent_streaming',
+            companyName: companyName,
+            agentId: CONFIG.GLEAN_AGENT_ID
+          }
+        };
+      } else {
+        result = await makeGleanRequest(options, postData);
+      }
+      
       log.success('agent_execution_success', { 
         attemptName: attempt.name, 
         endpoint: attempt.endpoint,
@@ -228,7 +365,8 @@ async function executeGleanAgent(companyName) {
   log.error('all_execution_attempts_failed', { 
     companyName, 
     attemptedMethods: executionAttempts.map(a => a.name),
-    lastError: lastError?.message
+    lastError: lastError?.message,
+    agentSchema: agentSchema
   });
   throw new Error(`AGENT_API_FAILED: All execution attempts failed. Last error: ${lastError?.message || 'Unknown error'}`);
 }
