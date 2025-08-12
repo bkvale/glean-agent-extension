@@ -10,7 +10,7 @@ const CONFIG = {
   GLEAN_BASE_URL: process.env.GLEAN_BASE_URL || `${process.env.GLEAN_INSTANCE || 'trace3'}-be.glean.com`,
   GLEAN_AGENT_ID: process.env.GLEAN_AGENT_ID || '5057a8a588c649d6b1231d648a9167c8',
   GLEAN_API_TOKEN: process.env.GLEAN_API_TOKEN || 'lGOIFZqCsxd6fEfW8Px+zQfcw08irSV8XDL1tIJLj/0=',
-  TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 8000, // 8s default, well under HubSpot's 10s limit
+  TIMEOUT_MS: parseInt(process.env.GLEAN_TIMEOUT_MS) || 30000, // 30s for streaming, longer than HubSpot's limit but we'll handle it
   MAX_RETRIES: parseInt(process.env.GLEAN_MAX_RETRIES) || 1,
   USE_ASYNC_FLOW: process.env.USE_ASYNC_FLOW === 'true' || true,
   TEST_MODE: process.env.TEST_MODE === 'true' || false // Disable test mode to fix real integration
@@ -59,18 +59,19 @@ async function makeGleanRequest(companyName, attempt = 1) {
       const options = {
       hostname: CONFIG.GLEAN_BASE_URL,
       port: 443,
-      path: '/rest/api/v1/agents/runs/wait',
+      path: '/rest/api/v1/agents/runs/stream',
       method: 'POST',
       timeout: CONFIG.TIMEOUT_MS,
       headers: {
         'Authorization': `Bearer ${CONFIG.GLEAN_API_TOKEN}`,
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
+        'Content-Length': Buffer.byteLength(postData),
+        'Accept': 'text/event-stream'
       }
     };
 
   log.http('http_request_outbound', { 
-    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/wait`,
+    url: `https://${CONFIG.GLEAN_BASE_URL}/rest/api/v1/agents/runs/stream`,
     method: 'POST',
     timeoutMs: CONFIG.TIMEOUT_MS,
     dataSize: Buffer.byteLength(postData)
@@ -91,32 +92,57 @@ async function makeGleanRequest(companyName, attempt = 1) {
         responseData += chunk;
       });
       
-                      res.on('end', () => {
-                  const responseDuration = Date.now() - responseStartTime;
-                  const totalDuration = Date.now() - startTime;
-                  
-                  log.http('http_response_complete', { 
-                    statusCode: res.statusCode,
-                    responseSize: responseData.length,
-                    responseDuration,
-                    totalDuration,
-                    attempt
-                  });
-                  
-                  if (res.statusCode >= 200 && res.statusCode < 300) {
-                    try {
-                      const parsedData = JSON.parse(responseData);
-                      log.success('parse_success', { 
-                        dataKeys: Object.keys(parsedData),
-                        hasMessages: parsedData.messages ? Array.isArray(parsedData.messages) : false,
-                        messageCount: parsedData.messages ? parsedData.messages.length : 0
-                      });
-                      resolve(parsedData);
-                    } catch (error) {
-                      log.error('parse_error', error);
-                      reject(new Error(`Invalid JSON response: ${error.message}`));
+      res.on('end', () => {
+        const responseDuration = Date.now() - responseStartTime;
+        const totalDuration = Date.now() - startTime;
+        
+        log.http('http_response_complete', { 
+          statusCode: res.statusCode,
+          responseSize: responseData.length,
+          responseDuration,
+          totalDuration,
+          attempt
+        });
+        
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            // Parse SSE data - look for the final message
+            const lines = responseData.split('\n');
+            let finalMessage = null;
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6); // Remove 'data: ' prefix
+                if (data && data !== '[DONE]') {
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.messages && Array.isArray(parsed.messages)) {
+                      finalMessage = parsed;
                     }
-                  } else {
+                  } catch (e) {
+                    // Skip invalid JSON lines
+                  }
+                }
+              }
+            }
+            
+            if (finalMessage) {
+              log.success('parse_success', { 
+                dataKeys: Object.keys(finalMessage),
+                hasMessages: finalMessage.messages ? Array.isArray(finalMessage.messages) : false,
+                messageCount: finalMessage.messages ? finalMessage.messages.length : 0
+              });
+              resolve(finalMessage);
+            } else {
+              // If no final message found, try to parse the whole response as JSON
+              const parsedData = JSON.parse(responseData);
+              resolve(parsedData);
+            }
+          } catch (error) {
+            log.error('parse_error', error);
+            reject(new Error(`Invalid JSON response: ${error.message}`));
+          }
+        } else {
           // Handle 5xx errors with retry logic
           if (res.statusCode >= 500 && attempt < CONFIG.MAX_RETRIES) {
             const backoffMs = Math.pow(2, attempt) * 1000; // Exponential backoff
